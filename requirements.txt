@@ -1,4 +1,4 @@
-langchain
-langchain-openai
-pydantic
-streamlit
+langchain==0.1.0
+langchain-openai==0.0.2
+pydantic==2.6.4
+streamlit==1.32.0
