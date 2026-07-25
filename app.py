@@ -81,10 +81,6 @@ if st.button("Execute Multi-Agent Legal Audit", type="primary"):
                 st.error(f"Execution Error: {str(e)}")
                 import streamlit as st
 from openai import OpenAI
-
-# Initialize OpenAI client (it automatically picks up your OPENAI_API_KEY from secrets or environment)
-client = OpenAI()
-
 st.subheader("🌐 Multi-Lingual Intake Translator")
 
 # Text box for raw client notes (e.g., Spanish, French, etc.)
@@ -103,7 +99,7 @@ if st.button("Translate and Structure Notes"):
             try:
                 # Prompt the model to act as a legal translator and analyst
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini", # or your preferred model
+                    model="gpt-4o-mini",
                     messages=[
                         {
                             "role": "system", 
@@ -115,7 +111,7 @@ if st.button("Translate and Structure Notes"):
                         }
                     ],
                     temperature=0.1
-                ]
+                )
                 
                 translated_text = response.choices[0].message.content
                 
@@ -124,3 +120,4 @@ if st.button("Translate and Structure Notes"):
                 
             except Exception as e:
                 st.error(f"An error occurred during translation: {e}")
+
