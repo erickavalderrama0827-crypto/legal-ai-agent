@@ -180,4 +180,63 @@ if uploaded_image is not None:
                 
             except Exception as e:
                 st.error(f"An error occurred while reading the image: {e}")
+                st.divider()
+st.subheader("⚖️ Advanced Asylum Application Modules")
+
+# Choose which module to run
+module_choice = st.selectbox(
+    "Select Workflow Tool:",
+    ["Select a tool...", "Timeline & Gap Analyzer", "Address History Formatter", "1-Year Deadline Screener"]
+)
+
+if module_choice == "Timeline & Gap Analyzer":
+    st.markdown("### 📅 Timeline & Inconsistency Check")
+    timeline_input = st.text_area("Paste client statements, notes, or mixed date records:")
+    
+    if st.button("Generate Chronological Timeline"):
+        if timeline_input.strip():
+            with st.spinner("Analyzing dates and finding gaps..."):
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a meticulous legal analyst. Extract all dates and events from the text, build a clean chronological timeline, and explicitly flag any suspicious gaps, overlaps, or inconsistencies that could hurt an asylum applicant's credibility."},
+                        {"role": "user", "content": timeline_input}
+                    ],
+                    temperature=0.1
+                )
+                st.markdown(response.choices[0].message.content)
+
+elif module_choice == "Address History Formatter":
+    st.markdown("### 🏠 5-Year Address History Builder (Form I-589)")
+    address_input = st.text_area("Describe the client's past living locations and rough timeframes:")
+    
+    if st.button("Format Address History"):
+        if address_input.strip():
+            with st.spinner("Structuring address record..."):
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are an immigration form assistant. Convert the user's rough narrative of living places into a clean, structured table format showing Street Address, City, Country, From (MM/YY), and To (MM/YY) for the past 5 years."},
+                        {"role": "user", "content": address_input}
+                    ],
+                    temperature=0.1
+                )
+                st.markdown(response.choices[0].message.content)
+
+elif module_choice == "1-Year Deadline Screener":
+    st.markdown("### ⏰ Filing Deadline & Exception Screener")
+    entry_date = st.date_input("Date of Last Arrival in the U.S.:")
+    narrative_context = st.text_area("Any notes regarding circumstances if past the 1-year mark:")
+    
+    if st.button("Check Deadline Status"):
+        with st.spinner("Calculating timeline window..."):
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are an asylum law compliance clerk. Calculate whether the 1-year filing deadline has passed based on the given arrival date. Outline the legal standard for exceptions (changed or extraordinary circumstances) if applicable."},
+                    {"role": "user", "content": f"Last arrival date: {entry_date}. Additional context: {narrative_context}"}
+                ],
+                temperature=0.1
+            )
+            st.markdown(response.choices[0].message.content)
 
