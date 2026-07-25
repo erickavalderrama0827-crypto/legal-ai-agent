@@ -1,3 +1,8 @@
+import streamlit as st
+from openai import OpenAI
+
+# Initialize the OpenAI client right at the top
+client = OpenAI()
 import os
 import streamlit as st
 from typing import List
