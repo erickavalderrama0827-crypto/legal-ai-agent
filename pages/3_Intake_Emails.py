@@ -18,7 +18,10 @@ else:
     
     with col1:
         client_name = st.text_input("Client Name:")
-        preferred_language = st.selectbox("Preferred Language:", ["English", "Spanish", "French"])
+        preferred_language = st.selectbox(
+            "Preferred Language:", 
+            ["English", "Spanish", "French", "Portuguese", "Kiche", "Mam", "Qanjobal", "Haitian Creole", "Arabic", "Mandarin"]
+        )
     
     with col2:
         email_purpose = st.selectbox(
