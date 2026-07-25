@@ -126,6 +126,7 @@ if st.button("Translate and Structure Notes"):
             except Exception as e:
                 st.error(f"An error occurred during translation: {e}")
                 st.subheader("📄 Handwritten Notes & Image Ingestion")
+                st.subheader("📄 Handwritten Notes & Image Ingestion")
 
 # File uploader that accepts common image formats
 uploaded_image = st.file_uploader(
@@ -134,17 +135,15 @@ uploaded_image = st.file_uploader(
 )
 
 if uploaded_image is not None:
-    # Display the uploaded image in the app so the user can verify it
+    # Display the uploaded image in the app
     st.image(uploaded_image, caption="Uploaded Intake Document", use_column_width=True)
     
     if st.button("Extract and Process Handwritten Notes"):
         with st.spinner("Reading handwriting and structuring data..."):
             try:
-                # Read the image bytes for the API call
-                image_bytes = uploaded_image.getvalue()
-                
-                # Encode the image to base64 so OpenAI's vision model can read it
+                # Read the image bytes and encode to base64 for the vision model
                 import base64
+                image_bytes = uploaded_image.getvalue()
                 base64_image = base64.b64encode(image_bytes).decode('utf-8')
                 
                 response = client.chat.completions.create(
@@ -172,7 +171,7 @@ if uploaded_image is not None:
                     ],
                     max_tokens=1000,
                     temperature=0.1
-                ]
+                )
                 
                 extracted_text = response.choices[0].message.content
                 
