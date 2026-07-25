@@ -79,3 +79,48 @@ if st.button("Execute Multi-Agent Legal Audit", type="primary"):
                         st.markdown(f"- {note}")
             except Exception as e:
                 st.error(f"Execution Error: {str(e)}")
+                import streamlit as st
+from openai import OpenAI
+
+# Initialize OpenAI client (it automatically picks up your OPENAI_API_KEY from secrets or environment)
+client = OpenAI()
+
+st.subheader("🌐 Multi-Lingual Intake Translator")
+
+# Text box for raw client notes (e.g., Spanish, French, etc.)
+raw_notes = st.text_area("Paste foreign-language intake notes here:")
+
+target_language = st.selectbox(
+    "Translate into:",
+    ["English", "Spanish"]
+)
+
+if st.button("Translate and Structure Notes"):
+    if not raw_notes.strip():
+        st.warning("Please enter some text to translate first.")
+    else:
+        with st.spinner("Translating and analyzing..."):
+            try:
+                # Prompt the model to act as a legal translator and analyst
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini", # or your preferred model
+                    messages=[
+                        {
+                            "role": "system", 
+                            "content": f"You are an expert legal assistant. Translate the following intake notes accurately into {target_language}. Maintain professional legal phrasing and format any key dates or entities clearly."
+                        },
+                        {
+                            "role": "user", 
+                            "content": raw_notes
+                        }
+                    ],
+                    temperature=0.1
+                ]
+                
+                translated_text = response.choices[0].message.content
+                
+                st.success("Translation Complete:")
+                st.write(translated_text)
+                
+            except Exception as e:
+                st.error(f"An error occurred during translation: {e}")
