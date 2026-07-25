@@ -291,4 +291,18 @@ if st.button("Generate Client Intake Email"):
             
             st.success("Intake Email Generated:")
             st.code(response.choices[0].message.content, language="markdown")
+            client_language = st.selectbox(
+    "Preferred Communication Language:",
+    [
+        "English", 
+        "Spanish", 
+        "French", 
+        "Mandarin (Chinese)", 
+        "Arabic", 
+        "Portuguese", 
+        "Haitian Creole", 
+        "Vietnamese", 
+        "Russian"
+    ]
+)
 
