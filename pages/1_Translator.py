@@ -23,7 +23,7 @@ else:
     )
 
     if uploaded_file is not None:
-        st.image(uploaded_file, caption="Uploaded Document", use_column_width=True)
+        st.image(uploaded_file, caption="Uploaded Document", use_container_width=True)
         
         if st.button("Process Document & Translate"):
             with st.spinner("Extracting text and translating..."):
@@ -51,7 +51,7 @@ else:
                             }
                         ],
                         max_tokens=1500
-                    ]
+                    )
                     
                     st.success("Document processed successfully!")
                     st.markdown("### Extraction & Translation Results")
