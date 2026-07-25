@@ -16,7 +16,10 @@ else:
 
     uploaded_file = st.file_uploader("Choose an image or document...", type=["png", "jpg", "jpeg", "pdf"])
     
-    target_language = st.selectbox("Select Target Language for Translation:", ["English", "Spanish", "French"])
+    target_language = st.selectbox(
+        "Select Target Language for Translation:", 
+        ["English", "Spanish", "French", "Portuguese", "Kiche", "Mam", "Qanjobal", "Haitian Creole", "Arabic", "Mandarin"]
+    )
 
     if uploaded_file is not None:
         st.image(uploaded_file, caption="Uploaded Document", use_column_width=True)
@@ -24,3 +27,4 @@ else:
             with st.spinner("Extracting and translating..."):
                 # Placeholder for API call execution
                 st.success("Document processed successfully!")
+             
