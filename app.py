@@ -306,7 +306,7 @@ if st.button("Generate Client Intake Email"):
             
             st.success("Intake Email Generated:")
             st.code(response.choices[0].message.content, language="markdown")
-st.subheader("📄 Multilingual Handwritten Notes & Image Ingestion")
+            st.subheader("📄 Multilingual Handwritten Notes & Image Ingestion")
 
 # Let the user specify the language of the handwriting or target output
 handwriting_lang = st.selectbox(
@@ -323,7 +323,7 @@ uploaded_image = st.file_uploader(
 )
 
 if uploaded_image is not None:
-    st.image(uploaded_image, caption="Uploaded Intake Document", use_column_width=True)
+    st.image(uploaded_image, caption="Uploaded Intake Document", use_container_width=True)
     
     if st.button("Extract and Translate Handwritten Notes"):
         with st.spinner("Reading handwriting and structuring data..."):
@@ -357,7 +357,7 @@ if uploaded_image is not None:
                     ],
                     max_tokens=1000,
                     temperature=0.1
-                ]
+                )
                 
                 extracted_text = response.choices[0].message.content
                 
