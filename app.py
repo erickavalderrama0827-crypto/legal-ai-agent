@@ -98,4 +98,4 @@ elif page == "⚡ Live Workflow Tool":
             st.markdown("#### Translated Case Summary:")
             st.write("> Client states they fled their home country on May 12th due to threats based on political affiliation. They crossed the border on June 4th and are seeking asylum.")
             
-            st.warning("⚠️ **Timeline Flag:** Validate the 1-year filing deadline based on the June 4th entry date.")ng your presentation.")
+            st.warning("⚠️ **Timeline Flag:** Validate the 1-year filing deadline based on the June 4th entry date.")
