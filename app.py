@@ -1,4 +1,4 @@
-import streamlit as st
+iimport streamlit as st
 import openai
 
 st.set_page_config(
@@ -74,7 +74,7 @@ if page == "🏠 Home / Overview":
 elif page == "⚡ Live Workflow Tool":
     # --- UNIFIED LIVE WORKFLOW WORKSPACE ---
     st.title("⚡ Live Multi-Agent Workflow Workspace")
-    st.write("Execute modular legal AI pipelines to evaluate statutory eligibility, deadlines, country conditions, and filing deficiencies.")
+    st.write("Execute modular legal AI pipelines to evaluate statutory eligibility, deadlines, country conditions, deficiencies, and exhibit indexing.")
 
     openai_api_key = st.secrets.get("OPENAI_API_KEY")
 
@@ -83,13 +83,14 @@ elif page == "⚡ Live Workflow Tool":
     else:
         client = openai.OpenAI(api_key=openai_api_key)
 
-        # Tab selection inside the workflow tool to include the new Deficiency Auditor
+        # Tab selection inside the workflow tool to include the Exhibit Indexer
         workflow_tab = st.selectbox(
             "Select Workflow Module to Execute:",
             [
                 "⚖️ Nexus & Timeline Auditor", 
                 "🌍 Country Conditions & Objective Evidence Screener",
-                "🔍 Deficiency & Amendment Auditor"
+                "🔍 Deficiency & Amendment Auditor",
+                "📂 Exhibit Index & Document Organizer"
             ]
         )
 
@@ -248,3 +249,52 @@ elif page == "⚡ Live Workflow Tool":
                             st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
                 else:
                     st.warning("⚠️ Please paste the original application excerpt to run the deficiency analysis.")
+
+        elif workflow_tab == "📂 Exhibit Index & Document Organizer":
+            st.subheader("📂 Exhibit Index & Document Organizer")
+            st.write("Organize, index, and generate structured USCIS-compliant exhibit lists for your legal cases seamlessly.")
+
+            case_documents = st.text_area(
+                "List your compiled case documents and descriptions:", 
+                height=160, 
+                placeholder="e.g., 1. Birth certificate of applicant (Spanish with certified translation)\n2. Hospital medical record showing assault injuries dated Oct 12, 2025\n3. Police report filed in Managua rejected by officer\n4. Human Rights Watch report on Nicaragua press freedom..."
+            )
+
+            if st.button("Generate Master Exhibit Table 🚀", type="primary"):
+                if case_documents.strip():
+                    with st.spinner("Structuring documents into a USCIS-compliant Master Exhibit index..."):
+                        try:
+                            response = client.chat.completions.create(
+                                model="gpt-4o-mini",
+                                messages=[
+                                    {
+                                        "role": "system",
+                                        "content": (
+                                            "You are an expert legal paralegal and immigration exhibit specialist. "
+                                            "Take the raw list of compiled case documents and organize them into a clean, "
+                                            "professional, USCIS-compliant Master Exhibit Index table formatted in Markdown. "
+                                            "Include columns for: Exhibit Letter/Number, Document Description, Date, and Evidentiary Purpose."
+                                        )
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": f"Compiled Documents:\n{case_documents}"
+                                    }
+                                ],
+                                temperature=0.0
+                            )
+                            exhibit_output = response.choices[0].message.content
+                            
+                            st.success("Master Exhibit Index Generated Successfully!")
+                            st.markdown("---")
+                            st.markdown("### 📋 USCIS-Compliant Master Exhibit Table")
+                            st.markdown(exhibit_output)
+                            
+                            st.markdown("---")
+                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
+                            st.checkbox("Attorney Verification: Approve Master Exhibit index for final court/USCIS binder compilation.")
+                            
+                        except Exception as e:
+                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
+                else:
+                    st.warning("⚠️ Please list your compiled documents before generating the exhibit table.")
