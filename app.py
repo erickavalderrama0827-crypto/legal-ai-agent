@@ -2,6 +2,9 @@ import streamlit as st
 import openai
 from io import BytesIO
 from docx import Document
+import imaplib
+import email
+from email.header import decode_header
 
 st.set_page_config(
     page_title="Primer Paso AI | Immigration & Legal Workflow Suite",
@@ -93,7 +96,8 @@ elif page == "⚡ Live Workflow Tool":
                 "🌍 Country Conditions & Objective Evidence Screener",
                 "🔍 Deficiency & Amendment Auditor",
                 "📂 Exhibit Index & Document Organizer",
-                "✉️ Automated Intake Email Generator"
+                "✉️ Automated Intake Email Generator",
+                "📥 Inbound Firm Mailroom"
             ]
         )
 
@@ -293,7 +297,6 @@ elif page == "⚡ Live Workflow Tool":
                             st.markdown("### 📋 USCIS-Compliant Master Exhibit Table")
                             st.markdown(exhibit_output)
                             
-                            # Generate a native Word Document (.docx) on the fly
                             doc = Document()
                             doc.add_heading("Master Exhibit Index", level=1)
                             doc.add_paragraph("Compiled Case Evidence & USCIS Index Summary\n")
@@ -359,7 +362,10 @@ elif page == "⚡ Live Workflow Tool":
                                             "You are an expert immigration legal assistant and communications specialist. "
                                             "Draft a professional, empathetic, and clear client follow-up email based on the inputs. "
                                             "The email must be written entirely in the client's preferred language. "
-                                            "Include appropriate subject lines, respectful greetings, clear action items, and office contact sign-offs."
+                                            "Include appropriate subject lines, respectful greetings, clear action items, and office contact sign-offs. "
+                                            "IMPORTANT: If the email pertains to starting an asylum case or filing documentation, "
+                                            "include a clear hyperlink referencing the official USCIS Form I-589 page: "
+                                            "https://www.uscis.gov/i-589 (or instruct them that they can access the official application and instructions there)."
                                         )
                                     },
                                     {
@@ -376,7 +382,6 @@ elif page == "⚡ Live Workflow Tool":
                             st.markdown("### 📨 Drafted Correspondence")
                             st.markdown(email_output)
                             
-                            # Generate native Word Document (.docx) for the email as well
                             doc_email = Document()
                             doc_email.add_heading(f"Client Correspondence: {client_name}", level=1)
                             doc_email.add_paragraph(f"Language: {preferred_language} | Purpose: {email_purpose}\n")
@@ -402,7 +407,73 @@ elif page == "⚡ Live Workflow Tool":
                 else:
                     st.warning("⚠️ Please fill out all required fields to generate the email.")
 
-           
-                          
-    
-                                
+        elif workflow_tab == "📥 Inbound Firm Mailroom":
+            st.subheader("📥 Inbound Firm Mailroom & Auto-Processor")
+            st.write("Connect to your organization's inbox to parse unread client inquiries, categorize needs, and auto-generate draft responses.")
+
+            st.info("💡 To connect a live inbox, store your IMAP settings in Streamlit Secrets (`IMAP_SERVER`, `FIRM_EMAIL`, `IMAP_PASSWORD`). For now, you can test the simulation engine below.")
+
+            simulated_sender = st.text_input("Simulate Inbound Sender Email:", value="carlos.mendoza@example.com")
+            simulated_subject = st.text_input("Simulate Email Subject:", value="Question about my asylum documents and hearing date")
+            simulated_body = st.text_area(
+                "Simulate Inbound Client Message Body:",
+                height=130,
+                value="Hello, I am writing because I cannot find my police report from San Salvador. Do I need to get a new one before next month? Also, when is our next appointment?"
+            )
+
+            if st.button("Process Inbound Message & Draft Response 🚀", type="primary"):
+                if simulated_body.strip():
+                    with st.spinner("AI parsing client intent and drafting compliant follow-up response..."):
+                        try:
+                            response = client.chat.completions.create(
+                                model="gpt-4o-mini",
+                                messages=[
+                                    {
+                                        "role": "system",
+                                        "content": (
+                                            "You are an automated legal intake assistant for an immigration firm. "
+                                            "Analyze the incoming client email, identify missing documents needed to start their case, "
+                                            "and draft a polite, professional follow-up response addressing their questions and requesting necessary items. "
+                                            "Include references to the official USCIS Form I-589 application portal (https://www.uscis.gov/i-589) if relevant."
+                                        )
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": f"From: {simulated_sender}\nSubject: {simulated_subject}\nMessage Body:\n{simulated_body}"
+                                    }
+                                ],
+                                temperature=0.0
+                            )
+                            inbound_draft = response.choices[0].message.content
+
+                            st.success("Inbound Message Processed & Draft Generated Successfully!")
+                            st.markdown("---")
+                            st.markdown(f"### 📨 AI Drafted Reply to: {simulated_sender}")
+                            st.markdown(inbound_draft)
+
+                            doc_inbound = Document()
+                            doc_inbound.add_heading(f"Inbound Reply: {simulated_sender}", level=1)
+                            doc_inbound.add_paragraph(f"Subject: {simulated_subject}\n")
+                            doc_inbound.add_paragraph(inbound_draft)
+
+                            inbound_io = BytesIO()
+                            doc_inbound.save(inbound_io)
+                            inbound_io.seek(0)
+
+                            st.download_button(
+                                label="📥 Download Draft Response (.docx)",
+                                data=inbound_io,
+                                file_name=f"Draft_Response_{simulated_sender.split('@')[0]}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            )
+
+                            st.markdown("---")
+                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
+                            st.checkbox("Attorney/Staff Verification: Review and approve automated draft before sending.")
+
+                        except Exception as e:
+                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
+                else:
+                    st.warning("⚠️ Please provide an inbound message body to process.")
+
+   
