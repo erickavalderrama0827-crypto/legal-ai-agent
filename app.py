@@ -1,4 +1,5 @@
 import streamlit as st
+import time
 
 st.set_page_config(
     page_title="Primer Paso AI | Immigration & Legal Workflow Suite",
@@ -71,10 +72,32 @@ if page == "🏠 Home / Overview":
     st.success("👈 Click **⚡ Live Workflow Tool** in the sidebar to jump into the workspace.")
 
 elif page == "⚡ Live Workflow Tool":
-    # --- LIVE WORKFLOW TOOL VIEW ---
-    st.title("⚡ Workflow Workspace")
-    st.write("Live multi-agent case processing environment.")
+    # --- LIVE WORKFLOW TOOL DEMO ---
+    st.title("⚡ Live Workspace: Translator & Intake")
+    st.write("Upload a client document (e.g., handwritten notes, foreign language intake form) to begin the multi-agent extraction process.")
     
-    # If you have actual interactive components (like file uploaders, inputs, or execution buttons), 
-    # you can add them right down here beneath this section.
-    st.info("Your multi-agent execution pipeline is ready here.")
+    # File Uploader Mockup
+    uploaded_file = st.file_uploader("Upload Client Document (PDF, JPG, PNG)", type=["pdf", "jpg", "png"])
+    
+    if uploaded_file is not None:
+        st.success(f"Document '{uploaded_file.name}' uploaded successfully!")
+        
+        # Execution Button
+        if st.button("Run Multi-Agent Extraction 🚀", type="primary"):
+            with st.spinner("Agent 1 (OCR) scanning document..."):
+                time.sleep(1.5)
+            with st.spinner("Agent 2 (Translation) processing text..."):
+                time.sleep(1.5)
+            with st.spinner("Agent 3 (Nexus Auditor) formatting output..."):
+                time.sleep(1.5)
+                
+            # Output Result Mockup
+            st.markdown("### ✅ Extraction Complete")
+            st.info("**Original Language Detected:** Spanish\n\n**Confidence Score:** 98%")
+            
+            st.markdown("#### Translated Case Summary:")
+            st.write("> Client states they fled their home country on May 12th due to threats based on political affiliation. They crossed the border on June 4th and are seeking asylum.")
+            
+            st.warning("⚠️ **Timeline Flag:** Validate the 1-year filing deadline based on the June 4th entry date.")
+    else:
+        st.info("Tip: You can upload any sample file to test the multi-agent loading sequence during your presentation.")
