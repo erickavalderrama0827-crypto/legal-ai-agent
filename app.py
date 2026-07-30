@@ -97,18 +97,41 @@ elif page == "⚡ Live Workflow Tool":
 
         if st.button("Run Nexus & Timeline Audit", type="primary"):
             if client_narrative.strip():
-                with st.spinner("Analyzing narrative and cross-checking timeline..."):
-                    # You can drop your real OpenAI API call right here if you want it to hit the model live!
-                    # For example:
-                    # response = client.chat.completions.create(model="gpt-4o", messages=[...])
-                    
-                    st.success("Audit complete!")
-                    st.markdown("### Audit Findings & Gaps")
-                    st.info(
-                        f"**Target Ground Analyzed:** {statutory_ground}\n\n"
-                        "**Analysis Results:** Narrative successfully processed. "
-                        "Statutory timeline and nexus alignment verified against secure parameters."
-                    )
+                with st.spinner("Multi-Agent Auditor analyzing narrative and statutory deadlines..."):
+                    try:
+                        # Call OpenAI to generate the audit breakdown live
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "You are an expert immigration legal tech multi-agent auditor. "
+                                        "Analyze the client narrative against the selected protected ground. "
+                                        "Provide: 1) A Timeline & Deadline Risk Assessment (checking entry dates/1-year rules), "
+                                        "2) Nexus Vulnerability Analysis, and 3) Evidentiary Gaps. "
+                                        "Keep it structured, professional, and formatted in clear Markdown."
+                                    )
+                                },
+                                {
+                                    "role": "user",
+                                    "content": f"Selected Ground: {statutory_ground}\n\nClient Narrative:\n{client_narrative}"
+                                }
+                            ],
+                            temperature=0.0
+                        )
+                        audit_output = response.choices[0].message.content
+                        
+                        st.success("Multi-Agent Pipeline Executed Successfully!")
+                        st.markdown("---")
+                        st.markdown("### 📊 Audit Findings & Gaps Analysis")
+                        st.markdown(audit_output)
+                        
+                        st.markdown("---")
+                        st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
+                        st.checkbox("Attorney Verification: Confirm findings and authorize Master Exhibit generation.")
+                        
+                    except Exception as e:
+                        st.error(f"Error running OpenAI audit: {e}")
             else:
                 st.warning("Please enter a client narrative to run the audit.")
-
