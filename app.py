@@ -74,7 +74,7 @@ if page == "🏠 Home / Overview":
 elif page == "⚡ Live Workflow Tool":
     # --- UNIFIED LIVE WORKFLOW WORKSPACE ---
     st.title("⚡ Live Multi-Agent Workflow Workspace")
-    st.write("Execute modular legal AI pipelines to evaluate statutory eligibility, deadlines, and country conditions.")
+    st.write("Execute modular legal AI pipelines to evaluate statutory eligibility, deadlines, country conditions, and filing deficiencies.")
 
     openai_api_key = st.secrets.get("OPENAI_API_KEY")
 
@@ -83,12 +83,13 @@ elif page == "⚡ Live Workflow Tool":
     else:
         client = openai.OpenAI(api_key=openai_api_key)
 
-        # Tab selection inside the workflow tool to keep it clean and organized
+        # Tab selection inside the workflow tool to include the new Deficiency Auditor
         workflow_tab = st.selectbox(
             "Select Workflow Module to Execute:",
             [
                 "⚖️ Nexus & Timeline Auditor", 
-                "🌍 Country Conditions & Objective Evidence Screener"
+                "🌍 Country Conditions & Objective Evidence Screener",
+                "🔍 Deficiency & Amendment Auditor"
             ]
         )
 
@@ -101,7 +102,7 @@ elif page == "⚡ Live Workflow Tool":
             client_narrative = st.text_area(
                 "Paste Client Intake Narrative / Statement:", 
                 height=180, 
-                placeholder="Enter client details here (e.g., Sofia R., Mateo V., or Carlos M. case history...)"
+                placeholder="Enter client details here..."
             )
             
             statutory_ground = st.selectbox(
@@ -198,3 +199,52 @@ elif page == "⚡ Live Workflow Tool":
                             st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
                 else:
                     st.warning("⚠️ Please fill out all fields to run the country conditions analysis.")
+
+        elif workflow_tab == "🔍 Deficiency & Amendment Auditor":
+            st.subheader("🔍 Application Review & Deficiency Auditor")
+            st.write("Review previously submitted applications, identify legal or factual gaps, and strengthen threat narratives to prevent dismissal.")
+
+            prior_filing = st.text_area("Paste Original Application / Statement Excerpt:", height=140, placeholder="Paste prior declaration or filing text here...")
+            government_notice = st.text_area("Paste Government Notice / RFE / Rejection Notes (Optional):", height=100, placeholder="Paste RFE or rejection reasoning here if available...")
+
+            if st.button("Run Deficiency & Amendment Analysis 🚀", type="primary"):
+                if prior_filing.strip():
+                    with st.spinner("Multi-Agent Auditor analyzing prior filing and identifying legal/factual gaps..."):
+                        try:
+                            response = client.chat.completions.create(
+                                model="gpt-4o-mini",
+                                messages=[
+                                    {
+                                        "role": "system",
+                                        "content": (
+                                            "You are an expert immigration legal tech deficiency and amendment auditor. "
+                                            "Review the prior filing and government rejection/RFE notes to identify legal gaps, "
+                                            "factual inconsistencies, or weak threat narratives. Provide: "
+                                            "1) Identified Legal & Factual Gaps, "
+                                            "2) RFE Risk Analysis (why it was flagged or vulnerable), and "
+                                            "3) Recommended Amendments & Stronger Threat Corroboration. "
+                                            "Keep it structured and professional in Markdown."
+                                        )
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": f"Prior Filing Excerpt:\n{prior_filing}\n\nGovernment Notice / RFE Notes:\n{government_notice}"
+                                    }
+                                ],
+                                temperature=0.0
+                            )
+                            deficiency_output = response.choices[0].message.content
+                            
+                            st.success("Deficiency & Amendment Analysis Complete!")
+                            st.markdown("---")
+                            st.markdown("### 📊 Deficiency Audit & Amendment Recommendations")
+                            st.markdown(deficiency_output)
+                            
+                            st.markdown("---")
+                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
+                            st.checkbox("Attorney Verification: Review recommended amendments before filing response.")
+                            
+                        except Exception as e:
+                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
+                else:
+                    st.warning("⚠️ Please paste the original application excerpt to run the deficiency analysis.")
