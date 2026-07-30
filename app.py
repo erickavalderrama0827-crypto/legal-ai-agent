@@ -79,7 +79,7 @@ elif page == "⚡ Live Workflow Tool":
     openai_api_key = st.secrets.get("OPENAI_API_KEY")
 
     if not openai_api_key:
-        st.warning("Please configure your OPENAI_API_KEY in your Streamlit app secrets.")
+        st.warning("⚠️ Please configure your OPENAI_API_KEY in your Streamlit app secrets.")
     else:
         client = openai.OpenAI(api_key=openai_api_key)
 
@@ -101,7 +101,7 @@ elif page == "⚡ Live Workflow Tool":
             client_narrative = st.text_area(
                 "Paste Client Intake Narrative / Statement:", 
                 height=180, 
-                placeholder="Enter client details here (e.g., Sofia R. or Mateo V. case history...)"
+                placeholder="Enter client details here (e.g., Sofia R., Mateo V., or Carlos M. case history...)"
             )
             
             statutory_ground = st.selectbox(
@@ -145,9 +145,9 @@ elif page == "⚡ Live Workflow Tool":
                             st.checkbox("Attorney Verification: Confirm findings and authorize Master Exhibit generation.")
                             
                         except Exception as e:
-                            st.error(f"Error running OpenAI audit: {e}")
+                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
                 else:
-                    st.warning("Please enter a client narrative to run the audit.")
+                    st.warning("⚠️ Please paste a client narrative into the text box above before running the audit.")
 
         elif workflow_tab == "🌍 Country Conditions & Objective Evidence Screener":
             st.subheader("🌍 Country Conditions & Objective Evidence Screener")
@@ -195,6 +195,6 @@ elif page == "⚡ Live Workflow Tool":
                             st.checkbox("Attorney Verification: Approve corroborating evidence package for Master Exhibit table.")
                             
                         except Exception as e:
-                            st.error(f"Error running synthesis: {e}")
+                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
                 else:
-                    st.warning("Please fill out all fields to run the country conditions analysis.")
+                    st.warning("⚠️ Please fill out all fields to run the country conditions analysis.")
