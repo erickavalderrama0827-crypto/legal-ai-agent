@@ -1,6 +1,5 @@
 import streamlit as st
 import openai
-from io import BytesIO
 
 st.set_page_config(
     page_title="Primer Paso AI | Immigration & Legal Workflow Suite",
@@ -291,12 +290,12 @@ elif page == "⚡ Live Workflow Tool":
                             st.markdown("### 📋 USCIS-Compliant Master Exhibit Table")
                             st.markdown(exhibit_output)
                             
-                            # Instant Download Button using text data stream
+                            # Instant Download Button as a universally readable .txt file
                             st.download_button(
-                                label="📥 Download Master Exhibit Table (Text/Markdown)",
+                                label="📥 Download Master Exhibit Table (.txt)",
                                 data=exhibit_output,
-                                file_name="Master_Exhibit_Index.md",
-                                mime="text/markdown"
+                                file_name="Master_Exhibit_Index.txt",
+                                mime="text/plain"
                             )
                             
                             st.markdown("---")
@@ -307,3 +306,8 @@ elif page == "⚡ Live Workflow Tool":
                             st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
                 else:
                     st.warning("⚠️ Please list your compiled documents before generating the exhibit table.")
+  
+
+    
+               
+                                          
