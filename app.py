@@ -1,5 +1,7 @@
 import streamlit as st
 import openai
+from io import BytesIO
+from docx import Document
 
 st.set_page_config(
     page_title="Primer Paso AI | Immigration & Legal Workflow Suite",
@@ -291,11 +293,21 @@ elif page == "⚡ Live Workflow Tool":
                             st.markdown("### 📋 USCIS-Compliant Master Exhibit Table")
                             st.markdown(exhibit_output)
                             
+                            # Generate a native Word Document (.docx) on the fly
+                            doc = Document()
+                            doc.add_heading("Master Exhibit Index", level=1)
+                            doc.add_paragraph("Compiled Case Evidence & USCIS Index Summary\n")
+                            doc.add_paragraph(exhibit_output)
+                            
+                            doc_io = BytesIO()
+                            doc.save(doc_io)
+                            doc_io.seek(0)
+                            
                             st.download_button(
-                                label="📥 Download Master Exhibit Table (.txt)",
-                                data=exhibit_output,
-                                file_name="Master_Exhibit_Index.txt",
-                                mime="text/plain"
+                                label="📥 Download Master Exhibit Table (.docx)",
+                                data=doc_io,
+                                file_name="Master_Exhibit_Index.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                             )
                             
                             st.markdown("---")
@@ -312,8 +324,26 @@ elif page == "⚡ Live Workflow Tool":
             st.write("Generate professional, multi-lingual follow-up emails and information requests for clients.")
 
             client_name = st.text_input("Client Name:", placeholder="e.g., Elena Morales")
-            preferred_language = st.selectbox("Preferred Language:", ["English", "Spanish", "French", "Haitian Creole"])
-            email_purpose = st.text_input("Email Purpose:", placeholder="e.g., Document Request & Follow-up")
+            
+            preferred_language = st.selectbox(
+                "Preferred Language:", 
+                ["English", "Spanish", "French", "Haitian Creole", "Portuguese", "Mandarin"]
+            )
+            
+            email_purpose = st.selectbox(
+                "Email Purpose / Correspondence Type:",
+                [
+                    "Document Request & Case Follow-up",
+                    "Request for Additional Evidence (RFE) Follow-up",
+                    "Upcoming Interview / Meeting Reminder",
+                    "Case Status Update & Next Steps",
+                    "Custom Purpose..."
+                ]
+            )
+
+            if email_purpose == "Custom Purpose...":
+                email_purpose = st.text_input("Enter Custom Email Purpose:", placeholder="e.g., Missing identity documents request")
+
             specific_details = st.text_area("Specific Details to Include:", height=130, placeholder="e.g., Need certified copies of police reports from Tegucigalpa and remind her of our upcoming meeting next Tuesday...")
 
             if st.button("Generate Professional Intake Email 🚀", type="primary"):
@@ -346,11 +376,21 @@ elif page == "⚡ Live Workflow Tool":
                             st.markdown("### 📨 Drafted Correspondence")
                             st.markdown(email_output)
                             
+                            # Generate native Word Document (.docx) for the email as well
+                            doc_email = Document()
+                            doc_email.add_heading(f"Client Correspondence: {client_name}", level=1)
+                            doc_email.add_paragraph(f"Language: {preferred_language} | Purpose: {email_purpose}\n")
+                            doc_email.add_paragraph(email_output)
+                            
+                            email_io = BytesIO()
+                            doc_email.save(email_io)
+                            email_io.seek(0)
+                            
                             st.download_button(
-                                label="📥 Download Intake Email (.txt)",
-                                data=email_output,
-                                file_name=f"Intake_Email_{client_name.replace(' ', '_')}.txt",
-                                mime="text/plain"
+                                label="📥 Download Intake Email (.docx)",
+                                data=email_io,
+                                file_name=f"Intake_Email_{client_name.replace(' ', '_')}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                             )
                             
                             st.markdown("---")
@@ -361,3 +401,8 @@ elif page == "⚡ Live Workflow Tool":
                             st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
                 else:
                     st.warning("⚠️ Please fill out all required fields to generate the email.")
+
+           
+                          
+    
+                                
