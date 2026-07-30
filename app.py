@@ -1,5 +1,6 @@
 import streamlit as st
 import openai
+from io import BytesIO
 
 st.set_page_config(
     page_title="Primer Paso AI | Immigration & Legal Workflow Suite",
@@ -83,7 +84,7 @@ elif page == "⚡ Live Workflow Tool":
     else:
         client = openai.OpenAI(api_key=openai_api_key)
 
-        # Tab selection inside the workflow tool to include the Exhibit Indexer
+        # Tab selection inside the workflow tool to include all modules
         workflow_tab = st.selectbox(
             "Select Workflow Module to Execute:",
             [
@@ -289,6 +290,14 @@ elif page == "⚡ Live Workflow Tool":
                             st.markdown("---")
                             st.markdown("### 📋 USCIS-Compliant Master Exhibit Table")
                             st.markdown(exhibit_output)
+                            
+                            # Instant Download Button using text data stream
+                            st.download_button(
+                                label="📥 Download Master Exhibit Table (Text/Markdown)",
+                                data=exhibit_output,
+                                file_name="Master_Exhibit_Index.md",
+                                mime="text/markdown"
+                            )
                             
                             st.markdown("---")
                             st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
