@@ -2,4 +2,7 @@ langchain
 langchain-openai
 pydantic
 streamlit
-
+Plaintext
+python-docx
+openai
+streamlit
