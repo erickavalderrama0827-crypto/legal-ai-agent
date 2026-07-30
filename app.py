@@ -1,4 +1,4 @@
-import streamlit as st
+iimport streamlit as st
 import openai
 
 st.set_page_config(
@@ -9,14 +9,7 @@ st.set_page_config(
 
 # Sidebar Navigation Toggle
 st.sidebar.title("Primer Paso AI")
-page = st.sidebar.radio(
-    "Navigation", 
-    [
-        "🏠 Home / Overview", 
-        "⚡ Nexus Auditor", 
-        "🌍 Country Conditions Screener"
-    ]
-)
+page = st.sidebar.radio("Navigation", ["🏠 Home / Overview", "⚡ Live Workflow Tool"])
 
 if page == "🏠 Home / Overview":
     # Main Header
@@ -76,75 +69,12 @@ if page == "🏠 Home / Overview":
         st.info("**Human-in-the-Loop (HITL)**\nEvery major phase requires explicit supervising attorney verification logged securely via audit trails.")
 
     st.divider()
-    st.success("👈 Select a tool in the sidebar to jump into the live workspace.")
+    st.success("👈 Click **⚡ Live Workflow Tool** in the sidebar to jump into the interactive workspace.")
 
-elif page == "⚡ Nexus Auditor":
-    # --- LIVE NEXUS AUDITOR TOOL ---
-    st.title("⚖️ Nexus Auditor & Timeline Cross-Checker")
-    st.write("Analyze client narratives against statutory asylum grounds, identify evidentiary gaps, and check timelines.")
-
-    openai_api_key = st.secrets.get("OPENAI_API_KEY")
-
-    if not openai_api_key:
-        st.warning("Please configure your OPENAI_API_KEY in your Streamlit app secrets.")
-    else:
-        client = openai.OpenAI(api_key=openai_api_key)
-
-        client_narrative = st.text_area(
-            "Paste Client Intake Narrative / Statement:", 
-            height=200, 
-            placeholder="Enter client details here..."
-        )
-        
-        statutory_ground = st.selectbox(
-            "Select Primary Protected Ground Focus:",
-            ["Race", "Religion", "Nationality", "Membership in a particular social group (PSG)", "Political opinion"]
-        )
-
-        if st.button("Run Nexus & Timeline Audit", type="primary"):
-            if client_narrative.strip():
-                with st.spinner("Multi-Agent Auditor analyzing narrative and statutory deadlines..."):
-                    try:
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini",
-                            messages=[
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "You are an expert immigration legal tech multi-agent auditor. "
-                                        "Analyze the client narrative against the selected protected ground. "
-                                        "Provide: 1) A Timeline & Deadline Risk Assessment, "
-                                        "2) Nexus Vulnerability Analysis, and 3) Evidentiary Gaps. "
-                                        "Keep it structured, professional, and formatted in clear Markdown."
-                                    )
-                                },
-                                {
-                                    "role": "user",
-                                    "content": f"Selected Ground: {statutory_ground}\n\nClient Narrative:\n{client_narrative}"
-                                }
-                            ],
-                            temperature=0.0
-                        )
-                        audit_output = response.choices[0].message.content
-                        
-                        st.success("Multi-Agent Pipeline Executed Successfully!")
-                        st.markdown("---")
-                        st.markdown("### 📊 Audit Findings & Gaps Analysis")
-                        st.markdown(audit_output)
-                        
-                        st.markdown("---")
-                        st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
-                        st.checkbox("Attorney Verification: Confirm findings and authorize Master Exhibit generation.")
-                        
-                    except Exception as e:
-                        st.error(f"Error running OpenAI audit: {e}")
-            else:
-                st.warning("Please enter a client narrative to run the audit.")
-
-elif page == "🌍 Country Conditions Screener":
-    # --- COUNTRY CONDITIONS SCREENER TOOL ---
-    st.title("🌍 Country Conditions & Objective Evidence Screener")
-    st.write("Synthesize home-country threat patterns, state-action failures, and corroborating evidence requirements.")
+elif page == "⚡ Live Workflow Tool":
+    # --- UNIFIED LIVE WORKFLOW WORKSPACE ---
+    st.title("⚡ Live Multi-Agent Workflow Workspace")
+    st.write("Execute modular legal AI pipelines to evaluate statutory eligibility, deadlines, and country conditions.")
 
     openai_api_key = st.secrets.get("OPENAI_API_KEY")
 
@@ -153,48 +83,118 @@ elif page == "🌍 Country Conditions Screener":
     else:
         client = openai.OpenAI(api_key=openai_api_key)
 
-        home_country = st.text_input("Home Country:", placeholder="e.g., Guatemala, Nicaragua, El Salvador")
-        persecution_category = st.text_input("Primary Persecution Category / Threat:", placeholder="e.g., Targeted violence against anti-mining activists / State corruption whistleblowers")
-        key_facts = st.text_area("Key Facts from Client Narrative to Corroborate:", height=150, placeholder="e.g., Assaulted in Guatemala City after organizing demonstrations; police laughed and refused to intervene...")
+        # Tab selection inside the workflow tool to keep it clean and organized
+        workflow_tab = st.selectbox(
+            "Select Workflow Module to Execute:",
+            [
+                "⚖️ Nexus & Timeline Auditor", 
+                "🌍 Country Conditions & Objective Evidence Screener"
+            ]
+        )
 
-        if st.button("Synthesize Country Conditions & Evidence 🚀", type="primary"):
-            if home_country.strip() and persecution_category.strip() and key_facts.strip():
-                with st.spinner("Synthesizing geopolitical threat patterns and evidence requirements..."):
-                    try:
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini",
-                            messages=[
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "You are an expert country conditions and asylum evidence specialist. "
-                                        "Synthesize home-country threat patterns, state-action failures, and corroborating "
-                                        "evidence requirements based on the provided inputs. Outline: "
-                                        "1) Home-Country Threat Patterns (geopolitical context), "
-                                        "2) State-Action/Protection Analysis, and "
-                                        "3) Recommended Master Exhibit Evidence (e.g., State Dept Reports, NGO documentation). "
-                                        "Keep it structured and professional in Markdown."
-                                    )
-                                },
-                                {
-                                    "role": "user",
-                                    "content": f"Home Country: {home_country}\nPersecution Category: {persecution_category}\nKey Facts: {key_facts}"
-                                }
-                            ],
-                            temperature=0.0
-                        )
-                        screener_output = response.choices[0].message.content
-                        
-                        st.success("Country Conditions Synthesis Complete!")
-                        st.markdown("---")
-                        st.markdown("### 📂 Objective Evidence & Threat Synthesis")
-                        st.markdown(screener_output)
-                        
-                        st.markdown("---")
-                        st.markdown("### 🔒 Master Exhibit Indexing Sign-Off")
-                        st.checkbox("Attorney Verification: Approve corroborating evidence package for Master Exhibit table.")
-                        
-                    except Exception as e:
-                        st.error(f"Error running synthesis: {e}")
-            else:
-                st.warning("Please fill out all fields to run the country conditions analysis.")
+        st.markdown("---")
+
+        if workflow_tab == "⚖️ Nexus & Timeline Auditor":
+            st.subheader("⚖️ Nexus Auditor & Timeline Cross-Checker")
+            st.write("Analyze client narratives against statutory asylum grounds, identify evidentiary gaps, and check deadlines.")
+
+            client_narrative = st.text_area(
+                "Paste Client Intake Narrative / Statement:", 
+                height=180, 
+                placeholder="Enter client details here (e.g., Sofia R. or Mateo V. case history...)"
+            )
+            
+            statutory_ground = st.selectbox(
+                "Select Primary Protected Ground Focus:",
+                ["Race", "Religion", "Nationality", "Membership in a particular social group (PSG)", "Political opinion"]
+            )
+
+            if st.button("Run Nexus & Timeline Audit 🚀", type="primary"):
+                if client_narrative.strip():
+                    with st.spinner("Multi-Agent Auditor analyzing narrative and statutory deadlines..."):
+                        try:
+                            response = client.chat.completions.create(
+                                model="gpt-4o-mini",
+                                messages=[
+                                    {
+                                        "role": "system",
+                                        "content": (
+                                            "You are an expert immigration legal tech multi-agent auditor. "
+                                            "Analyze the client narrative against the selected protected ground. "
+                                            "Provide: 1) A Timeline & Deadline Risk Assessment, "
+                                            "2) Nexus Vulnerability Analysis, and 3) Evidentiary Gaps. "
+                                            "Keep it structured, professional, and formatted in clear Markdown."
+                                        )
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": f"Selected Ground: {statutory_ground}\n\nClient Narrative:\n{client_narrative}"
+                                    }
+                                ],
+                                temperature=0.0
+                            )
+                            audit_output = response.choices[0].message.content
+                            
+                            st.success("Multi-Agent Pipeline Executed Successfully!")
+                            st.markdown("---")
+                            st.markdown("### 📊 Audit Findings & Gaps Analysis")
+                            st.markdown(audit_output)
+                            
+                            st.markdown("---")
+                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
+                            st.checkbox("Attorney Verification: Confirm findings and authorize Master Exhibit generation.")
+                            
+                        except Exception as e:
+                            st.error(f"Error running OpenAI audit: {e}")
+                else:
+                    st.warning("Please enter a client narrative to run the audit.")
+
+        elif workflow_tab == "🌍 Country Conditions & Objective Evidence Screener":
+            st.subheader("🌍 Country Conditions & Objective Evidence Screener")
+            st.write("Synthesize home-country threat patterns, state-action failures, and corroborating evidence requirements.")
+
+            home_country = st.text_input("Home Country:", placeholder="e.g., Guatemala, Nicaragua, El Salvador")
+            persecution_category = st.text_input("Primary Persecution Category / Threat:", placeholder="e.g., Targeted violence against anti-mining activists")
+            key_facts = st.text_area("Key Facts from Client Narrative to Corroborate:", height=130, placeholder="e.g., Assaulted in Guatemala City after organizing demonstrations...")
+
+            if st.button("Synthesize Country Conditions & Evidence 🚀", type="primary"):
+                if home_country.strip() and persecution_category.strip() and key_facts.strip():
+                    with st.spinner("Synthesizing geopolitical threat patterns and evidence requirements..."):
+                        try:
+                            response = client.chat.completions.create(
+                                model="gpt-4o-mini",
+                                messages=[
+                                    {
+                                        "role": "system",
+                                        "content": (
+                                            "You are an expert country conditions and asylum evidence specialist. "
+                                            "Synthesize home-country threat patterns, state-action failures, and corroborating "
+                                            "evidence requirements based on the provided inputs. Outline: "
+                                            "1) Home-Country Threat Patterns (geopolitical context), "
+                                            "2) State-Action/Protection Analysis, and "
+                                            "3) Recommended Master Exhibit Evidence (e.g., State Dept Reports, NGO documentation). "
+                                            "Keep it structured and professional in Markdown."
+                                        )
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": f"Home Country: {home_country}\nPersecution Category: {persecution_category}\nKey Facts: {key_facts}"
+                                    }
+                                ],
+                                temperature=0.0
+                            )
+                            screener_output = response.choices[0].message.content
+                            
+                            st.success("Country Conditions Synthesis Complete!")
+                            st.markdown("---")
+                            st.markdown("### 📂 Objective Evidence & Threat Synthesis")
+                            st.markdown(screener_output)
+                            
+                            st.markdown("---")
+                            st.markdown("### 🔒 Master Exhibit Indexing Sign-Off")
+                            st.checkbox("Attorney Verification: Approve corroborating evidence package for Master Exhibit table.")
+                            
+                        except Exception as e:
+                            st.error(f"Error running synthesis: {e}")
+                else:
+                    st.warning("Please fill out all fields to run the country conditions analysis.")
