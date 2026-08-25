@@ -2,553 +2,2240 @@ import streamlit as st
 import openai
 from io import BytesIO
 from docx import Document
-import imaplib
-import email
-from email.header import decode_header
+from datetime import datetime, timezone
+import uuid
+import json
+import base64
+
+
+# ============================================================
+# PAGE CONFIG
+# ============================================================
 
 st.set_page_config(
-    page_title="Primer Paso AI | Immigration & Legal Workflow Suite",
+    page_title="Primer Paso AI | Immigration Case Intelligence",
     page_icon="⚖️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# Sidebar Navigation Toggle
-st.sidebar.title("Primer Paso AI")
-page = st.sidebar.radio("Navigation", ["🏠 Home / Overview", "⚡ Live Workflow Tool"])
+
+# ============================================================
+# CONSTANTS
+# ============================================================
+
+MODEL = "gpt-4o-mini"
+VISION_MODEL = "gpt-4o"
+
+TARGET_LANGUAGES = [
+    "English",
+    "Spanish",
+    "French",
+    "Haitian Creole",
+    "Portuguese",
+    "Mandarin",
+]
+
+PROTECTED_GROUNDS = [
+    "Race",
+    "Religion",
+    "Nationality",
+    "Membership in a particular social group (PSG)",
+    "Political opinion",
+]
+
+
+# ============================================================
+# CASE MEMORY
+# ============================================================
+
+def create_case():
+    return {
+        "case_id": str(uuid.uuid4()),
+        "case_type": "Humanitarian Immigration",
+        "applicant_name": "",
+        "country_of_origin": "",
+        "protected_ground": "",
+        "sources": [],
+        "facts": [],
+        "timeline": [],
+        "evidence": [],
+        "authorities": [],
+        "vulnerabilities": [],
+        "outputs": [],
+        "audit_log": [],
+        "approvals": [],
+    }
+
+
+def initialize_session():
+    if "case" not in st.session_state:
+        st.session_state.case = create_case()
+
+    if "last_output" not in st.session_state:
+        st.session_state.last_output = ""
+
+    if "workflow_result" not in st.session_state:
+        st.session_state.workflow_result = None
+
+
+initialize_session()
+
+
+def get_case():
+    return st.session_state.case
+
+
+# ============================================================
+# AUDIT LOG
+# ============================================================
+
+def audit_event(action, actor="AI_AGENT", details=None):
+    event = {
+        "event_id": str(uuid.uuid4()),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "action": action,
+        "actor": actor,
+        "details": details or {},
+    }
+
+    st.session_state.case["audit_log"].append(event)
+
+    return event
+
+
+# ============================================================
+# CASE HELPERS
+# ============================================================
+
+def add_source(
+    source_type,
+    name,
+    text="",
+    metadata=None,
+):
+    source = {
+        "source_id": str(uuid.uuid4()),
+        "source_type": source_type,
+        "name": name,
+        "text": text,
+        "metadata": metadata or {},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    st.session_state.case["sources"].append(source)
+
+    audit_event(
+        "SOURCE_ADDED",
+        details={
+            "source_id": source["source_id"],
+            "source_type": source_type,
+            "name": name,
+        },
+    )
+
+    return source
+
+
+def add_fact(
+    statement,
+    source_ids,
+    date_value=None,
+    confidence="medium",
+    verified=False,
+):
+    fact = {
+        "fact_id": str(uuid.uuid4()),
+        "statement": statement,
+        "date": date_value,
+        "confidence": confidence,
+        "source_ids": source_ids,
+        "attorney_verified": verified,
+    }
+
+    st.session_state.case["facts"].append(fact)
+
+    return fact
+
+
+def add_timeline_event(
+    date_value,
+    description,
+    fact_ids,
+    source_ids,
+    confidence="medium",
+):
+    event = {
+        "event_id": str(uuid.uuid4()),
+        "date": date_value,
+        "description": description,
+        "fact_ids": fact_ids,
+        "source_ids": source_ids,
+        "confidence": confidence,
+    }
+
+    st.session_state.case["timeline"].append(event)
+
+    return event
+
+
+def add_vulnerability(
+    issue,
+    severity,
+    explanation,
+    fact_ids=None,
+    recommended_action=None,
+):
+    vulnerability = {
+        "vulnerability_id": str(uuid.uuid4()),
+        "issue": issue,
+        "severity": severity,
+        "explanation": explanation,
+        "fact_ids": fact_ids or [],
+        "recommended_action": recommended_action,
+    }
+
+    st.session_state.case["vulnerabilities"].append(vulnerability)
+
+    return vulnerability
+
+
+# ============================================================
+# OPENAI CLIENT
+# ============================================================
+
+def get_openai_client():
+    api_key = st.secrets.get("OPENAI_API_KEY")
+
+    if not api_key:
+        return None
+
+    return openai.OpenAI(api_key=api_key)
+
+
+client = get_openai_client()
+
+
+# ============================================================
+# AI HELPERS
+# ============================================================
+
+def ask_markdown(
+    system_prompt,
+    user_prompt,
+    model=MODEL,
+):
+    if client is None:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not configured in Streamlit Secrets."
+        )
+
+    response = client.chat.completions.create(
+        model=model,
+        temperature=0,
+        messages=[
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": user_prompt,
+            },
+        ],
+    )
+
+    return response.choices[0].message.content
+
+
+def ask_json(
+    system_prompt,
+    user_prompt,
+    model=MODEL,
+):
+    if client is None:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not configured in Streamlit Secrets."
+        )
+
+    response = client.chat.completions.create(
+        model=model,
+        temperature=0,
+        response_format={
+            "type": "json_object"
+        },
+        messages=[
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": user_prompt,
+            },
+        ],
+    )
+
+    raw = response.choices[0].message.content
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "The AI returned invalid structured data. "
+            "No case data was saved."
+        ) from exc
+
+
+# ============================================================
+# DOCUMENT GENERATION
+# ============================================================
+
+def create_docx(
+    title,
+    body,
+):
+    document = Document()
+
+    document.add_heading(
+        title,
+        level=1,
+    )
+
+    document.add_paragraph(
+        body
+    )
+
+    output = BytesIO()
+
+    document.save(output)
+
+    output.seek(0)
+
+    return output
+
+
+# ============================================================
+# IMAGE OCR / TRANSLATION
+# ============================================================
+
+def process_image(
+    image_bytes,
+    mime_type,
+    target_language,
+):
+    encoded = base64.b64encode(
+        image_bytes
+    ).decode("utf-8")
+
+    response = client.chat.completions.create(
+        model=VISION_MODEL,
+        temperature=0,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a source-faithful legal document "
+                    "OCR and translation assistant.\n\n"
+                    "Perform these steps separately:\n"
+                    "1. Extract the visible text.\n"
+                    "2. Translate the extracted text.\n"
+                    "3. Identify possible legal relevance.\n\n"
+                    "Do not invent missing text.\n"
+                    "If text is unreadable, say so.\n"
+                    "Do not make legal conclusions."
+                ),
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Target translation language: "
+                            f"{target_language}"
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": (
+                                f"data:{mime_type};"
+                                f"base64,{encoded}"
+                            )
+                        },
+                    },
+                ],
+            },
+        ],
+    )
+
+    return response.choices[0].message.content
+
+
+# ============================================================
+# FACT EXTRACTION
+# ============================================================
+
+def extract_facts_from_source(
+    source,
+):
+    system_prompt = """
+You are a legal case-intelligence extraction agent.
+
+Your task is to extract facts from the supplied source.
+
+IMPORTANT RULES:
+
+1. Extract only information actually supported by the source.
+2. Never invent dates, names, locations, events, or evidence.
+3. Do not decide whether the applicant is credible.
+4. Preserve uncertainty.
+5. Distinguish allegations from verified evidence.
+6. Every fact must reference the supplied source_id.
+7. If a date is uncertain, return null.
+8. Do not provide a final legal conclusion.
+
+Return JSON with exactly this structure:
+
+{
+  "facts": [
+    {
+      "statement": "...",
+      "date": "YYYY-MM-DD or null",
+      "confidence": "low|medium|high"
+    }
+  ]
+}
+"""
+
+    user_prompt = f"""
+SOURCE ID:
+{source["source_id"]}
+
+SOURCE TYPE:
+{source["source_type"]}
+
+SOURCE NAME:
+{source["name"]}
+
+SOURCE CONTENT:
+{source["text"]}
+"""
+
+    result = ask_json(
+        system_prompt,
+        user_prompt,
+    )
+
+    created = []
+
+    for item in result.get("facts", []):
+        fact = add_fact(
+            statement=item.get(
+                "statement",
+                "",
+            ),
+            date_value=item.get(
+                "date"
+            ),
+            confidence=item.get(
+                "confidence",
+                "medium",
+            ),
+            source_ids=[
+                source["source_id"]
+            ],
+        )
+
+        created.append(fact)
+
+    audit_event(
+        "FACT_EXTRACTION",
+        details={
+            "source_id": source["source_id"],
+            "facts_created": len(created),
+        },
+    )
+
+    return created
+
+
+# ============================================================
+# TIMELINE BUILDER
+# ============================================================
+
+def rebuild_timeline():
+    case = get_case()
+
+    case["timeline"] = []
+
+    for fact in case["facts"]:
+
+        if not fact.get("date"):
+            continue
+
+        add_timeline_event(
+            date_value=fact["date"],
+            description=fact["statement"],
+            fact_ids=[
+                fact["fact_id"]
+            ],
+            source_ids=fact["source_ids"],
+            confidence=fact.get(
+                "confidence",
+                "medium",
+            ),
+        )
+
+    case["timeline"].sort(
+        key=lambda item: (
+            item.get("date") or
+            "9999-99-99"
+        )
+    )
+
+    audit_event(
+        "TIMELINE_REBUILT",
+        details={
+            "event_count": len(
+                case["timeline"]
+            )
+        },
+    )
+
+
+# ============================================================
+# CONTRADICTION ENGINE
+# ============================================================
+
+def run_contradiction_audit():
+    case = get_case()
+
+    payload = {
+        "facts": case["facts"],
+        "timeline": case["timeline"],
+        "sources": [
+            {
+                "source_id": s["source_id"],
+                "source_type": s["source_type"],
+                "name": s["name"],
+            }
+            for s in case["sources"]
+        ],
+    }
+
+    system_prompt = """
+You are an adversarial immigration case-quality agent.
+
+Your job is to identify POTENTIAL inconsistencies.
+
+Do NOT accuse an applicant of lying.
+
+Look for:
+
+- conflicting dates
+- conflicting locations
+- conflicting sequences of events
+- different descriptions of the same event
+- discrepancies between source documents
+- unsupported factual assertions
+- chronology problems
+
+For each issue return:
+
+{
+  "contradictions": [
+    {
+      "issue": "...",
+      "severity": "low|medium|high|critical",
+      "explanation": "...",
+      "related_fact_ids": [],
+      "recommended_action": "..."
+    }
+  ]
+}
+
+Use "potential inconsistency" unless the conflict is objectively established.
+"""
+
+    result = ask_json(
+        system_prompt,
+        json.dumps(
+            payload,
+            indent=2,
+        ),
+    )
+
+    case["vulnerabilities"] = []
+
+    for item in result.get(
+        "contradictions",
+        [],
+    ):
+        add_vulnerability(
+            issue=item.get(
+                "issue",
+                "Potential inconsistency",
+            ),
+            severity=item.get(
+                "severity",
+                "medium",
+            ),
+            explanation=item.get(
+                "explanation",
+                "",
+            ),
+            fact_ids=item.get(
+                "related_fact_ids",
+                [],
+            ),
+            recommended_action=item.get(
+                "recommended_action"
+            ),
+        )
+
+    audit_event(
+        "ADVERSARIAL_CONTRADICTION_REVIEW",
+        details={
+            "issues_found": len(
+                case["vulnerabilities"]
+            )
+        },
+    )
+
+    return case["vulnerabilities"]
+
+
+# ============================================================
+# CASE INTELLIGENCE
+# ============================================================
+
+def run_case_intelligence(
+    protected_ground,
+):
+    case = get_case()
+
+    facts = case["facts"]
+
+    system_prompt = """
+You are an immigration case-intelligence analyst
+assisting a supervising attorney.
+
+Analyze the supplied structured case information.
+
+Provide:
+
+1. Case Theory
+2. Potential Nexus Strengths
+3. Potential Nexus Vulnerabilities
+4. Evidence Gaps
+5. Timeline / Deadline Concerns
+6. Questions the attorney should investigate
+7. Facts that require verification
+
+IMPORTANT:
+
+- Do not determine whether the applicant qualifies.
+- Do not make credibility findings.
+- Do not invent facts.
+- Do not cite legal authorities unless supplied.
+- Every factual observation must be traceable to a fact_id.
+- Clearly distinguish source-supported facts from analysis.
+"""
+
+    user_prompt = f"""
+Protected Ground:
+{protected_ground}
+
+Case ID:
+{case["case_id"]}
+
+Applicant:
+{case.get("applicant_name", "")}
+
+Country:
+{case.get("country_of_origin", "")}
+
+Facts:
+{json.dumps(facts, indent=2)}
+
+Timeline:
+{json.dumps(case["timeline"], indent=2)}
+
+Evidence:
+{json.dumps(case["evidence"], indent=2)}
+"""
+
+    result = ask_markdown(
+        system_prompt,
+        user_prompt,
+    )
+
+    case["outputs"].append(
+        {
+            "type": "case_intelligence",
+            "created_at": datetime.now(
+                timezone.utc
+            ).isoformat(),
+            "content": result,
+        }
+    )
+
+    audit_event(
+        "CASE_INTELLIGENCE_ANALYSIS",
+        details={
+            "protected_ground":
+                protected_ground,
+        },
+    )
+
+    return result
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+st.sidebar.title("⚖️ Primer Paso AI")
+
+st.sidebar.caption(
+    "Immigration Case Intelligence & Workflow Suite"
+)
+
+page = st.sidebar.radio(
+    "Navigation",
+    [
+        "🏠 Home / Overview",
+        "🧠 Case Intelligence",
+        "⚡ Live Workflow Tool",
+    ],
+)
+
+
+# ============================================================
+# CASE STATUS SIDEBAR
+# ============================================================
+
+case = get_case()
+
+st.sidebar.divider()
+
+st.sidebar.markdown(
+    "### 📁 Current Case"
+)
+
+st.sidebar.code(
+    case["case_id"]
+)
+
+st.sidebar.metric(
+    "Facts",
+    len(case["facts"]),
+)
+
+st.sidebar.metric(
+    "Sources",
+    len(case["sources"]),
+)
+
+st.sidebar.metric(
+    "Timeline Events",
+    len(case["timeline"]),
+)
+
+if case["vulnerabilities"]:
+    st.sidebar.warning(
+        f"⚠️ {len(case['vulnerabilities'])} "
+        "potential issue(s)"
+    )
+
+if st.sidebar.button(
+    "🔄 Start New Case"
+):
+    st.session_state.case = create_case()
+    st.session_state.last_output = ""
+    st.session_state.workflow_result = None
+    st.rerun()
+
+
+# ============================================================
+# HOME
+# ============================================================
 
 if page == "🏠 Home / Overview":
-    # Main Header
-    st.title("⚖️ Primer Paso AI")
-    st.subheader("Autonomous Multi-Agent Legal Workflow & Compliance Suite")
 
-    st.markdown("""
-    Welcome to **Primer Paso AI**, a production-ready, deterministic legal tech platform designed to eliminate administrative bottlenecks 
-    in asylum and immigration casework. By combining modular multi-agent automation with strict human-in-the-loop (HITL) oversight, 
-    our platform scales non-profit capacity while upholding rigorous legal standards.
-    """)
+    st.title(
+        "⚖️ Primer Paso AI"
+    )
+
+    st.subheader(
+        "Immigration Case Intelligence & Workflow Suite"
+    )
+
+    st.markdown(
+        """
+        **Primer Paso AI** is designed to help immigration
+        professionals organize, analyze, verify, and prepare
+        humanitarian immigration matters while keeping the
+        supervising attorney in control.
+        """
+    )
 
     st.divider()
 
-    # Core Architecture Overview
-    st.markdown("### 🛠️ Complete End-to-End Workflow Modules")
+    # Product architecture
+
+    st.markdown(
+        "## 🧠 Case-Centered Architecture"
+    )
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.markdown("#### 📥 Intake & Ingestion")
-        st.markdown("""
-        * **1. Translator & OCR:** Handles foreign languages and handwritten client notes.
-        * **2. Nexus Auditor:** Cross-checks persecution narratives against statutory grounds.
-        * **3. Intake Emails:** Generates structured correspondence and client summaries.
-        """)
 
-    with col2:
-        st.markdown("#### 📂 Case & Evidence Prep")
-        st.markdown("""
-        * **4. Exhibit Indexer:** Automates USCIS-compliant Master Exhibit tables.
-        * **5. Deadline Calculator:** Flags high-risk statutory windows (e.g., 1-year filing rule).
-        * **6. Country Conditions:** Pulls objective risk and geopolitical corroboration.
-        """)
+        st.markdown(
+            """
+            ### 📥 Intake & Ingestion
 
-    with col3:
-        st.markdown("#### 🎯 Review & Adjudication")
-        st.markdown("""
-        * **7. Deficiency Auditor:** Reviews prior filings to correct gaps and strengthen claims.
-        * **9. Interview Prep:** Generates bilingual practice Q&A and trauma-informed coaching.
-        * **10. Audit Log:** Enforces mandatory attorney sign-off and compliance tracking.
-        """)
-
-    st.divider()
-
-    # PM Guardrails Section
-    st.markdown("### 🔒 Built-In Product Management & Legal Guardrails")
-    col_g1, col_g2, col_g3 = st.columns(3)
-
-    with col_g1:
-        st.info("**Zero Hallucinations**\nStrict 0.0-temperature profiles and structured data parsing ensure predictable, reliable outputs.")
-
-    with col_g2:
-        st.info("**Separation of Concerns**\nIsolates data extraction and translation tasks cleanly from business logic validation loops.")
-
-    with col_g3:
-        st.info("**Human-in-the-Loop (HITL)**\nEvery major phase requires explicit supervising attorney verification logged securely via audit trails.")
-
-    st.divider()
-    st.success("👈 Click **⚡ Live Workflow Tool** in the sidebar to jump into the interactive workspace.")
-
-elif page == "⚡ Live Workflow Tool":
-    # --- UNIFIED LIVE WORKFLOW WORKSPACE ---
-    st.title("⚡ Live Multi-Agent Workflow Workspace")
-    st.write("Execute modular legal AI pipelines to evaluate statutory eligibility, deadlines, country conditions, deficiencies, exhibit indexing, and client communications.")
-
-    openai_api_key = st.secrets.get("OPENAI_API_KEY")
-
-    if not openai_api_key:
-        st.warning("⚠️ Please configure your OPENAI_API_KEY in your Streamlit app secrets.")
-    else:
-        client = openai.OpenAI(api_key=openai_api_key)
-
-        # Tab selection inside the workflow tool to include all 7 modules
-        workflow_tab = st.selectbox(
-            "Select Workflow Module to Execute:",
-            [
-                "Multi-Lingual Translator & Document OCR",
-                "⚖️ Nexus & Timeline Auditor", 
-                "🌍 Country Conditions & Objective Evidence Screener",
-                "🔍 Deficiency & Amendment Auditor",
-                "📂 Exhibit Index & Document Organizer",
-                "✉️ Automated Intake Email Generator",
-                "📥 Inbound Firm Mailroom"
-            ]
+            - Multilingual document processing
+            - Image OCR
+            - Client narratives
+            - Email intake
+            - WhatsApp / voice-note workflow
+            - Source tracking
+            """
         )
 
-        st.markdown("---")
+    with col2:
 
-        if workflow_tab == "Multi-Lingual Translator & Document OCR":
-            st.subheader("🌐 Multi-Lingual Translator & Document OCR")
-            st.write("Upload an image of handwritten notes or a document to extract text and translate it seamlessly.")
+        st.markdown(
+            """
+            ### 🧩 Case Intelligence
 
-            uploaded_file = st.file_uploader(
-                "Choose an image or document...", 
-                type=["png", "jpg", "jpeg", "pdf", "txt"]
+            - Structured facts
+            - Case timeline
+            - Nexus analysis
+            - Country conditions
+            - Evidence gaps
+            - Deficiency analysis
+            - Contradiction detection
+            """
+        )
+
+    with col3:
+
+        st.markdown(
+            """
+            ### 🛡️ Verification & Review
+
+            - Citation verification
+            - Adversarial case review
+            - Exhibit organization
+            - Interview preparation
+            - Audit trail
+            - Attorney approval
+            - Case export
+            """
+        )
+
+    st.divider()
+
+    st.markdown(
+        "## 🔐 Product Guardrails"
+    )
+
+    g1, g2, g3 = st.columns(3)
+
+    with g1:
+        st.info(
+            "**Evidence-Grounded**\n\n"
+            "Outputs are designed around source material "
+            "rather than unsupported factual assumptions."
+        )
+
+    with g2:
+        st.info(
+            "**Human-in-the-Loop**\n\n"
+            "AI analysis does not replace supervising "
+            "attorney review or professional judgment."
+        )
+
+    with g3:
+        st.info(
+            "**Traceable Case Memory**\n\n"
+            "Facts can be connected to their underlying "
+            "sources and downstream analysis."
+        )
+
+    st.divider()
+
+    st.markdown(
+        "## 📊 Current Case Status"
+    )
+
+    m1, m2, m3, m4 = st.columns(4)
+
+    m1.metric(
+        "Sources",
+        len(case["sources"]),
+    )
+
+    m2.metric(
+        "Facts",
+        len(case["facts"]),
+    )
+
+    m3.metric(
+        "Evidence Items",
+        len(case["evidence"]),
+    )
+
+    m4.metric(
+        "Potential Issues",
+        len(case["vulnerabilities"]),
+    )
+
+    st.success(
+        "Use the sidebar to enter Case Intelligence "
+        "or launch the Live Workflow Tool."
+    )
+
+
+# ============================================================
+# CASE INTELLIGENCE
+# ============================================================
+
+elif page == "🧠 Case Intelligence":
+
+    st.title(
+        "🧠 Case Intelligence Center"
+    )
+
+    st.caption(
+        "Build a structured case record and stress-test it "
+        "before attorney review."
+    )
+
+    case = get_case()
+
+    # --------------------------------------------------------
+    # CASE INFORMATION
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 1. Case Information"
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+
+        applicant_name = st.text_input(
+            "Applicant Name",
+            value=case.get(
+                "applicant_name",
+                "",
+            ),
+        )
+
+    with c2:
+
+        country = st.text_input(
+            "Country of Origin",
+            value=case.get(
+                "country_of_origin",
+                "",
+            ),
+        )
+
+    protected_ground = st.selectbox(
+        "Primary Protected Ground",
+        [""] + PROTECTED_GROUNDS,
+        index=(
+            [""] + PROTECTED_GROUNDS
+        ).index(
+            case.get(
+                "protected_ground",
+                "",
             )
-            
-            target_language = st.selectbox(
-                "Select Target Language for Translation:",
-                ["English", "Spanish", "French", "Haitian Creole", "Portuguese"]
-            )
+        )
+        if case.get(
+            "protected_ground",
+            "",
+        ) in PROTECTED_GROUNDS
+        else 0,
+    )
 
-            if uploaded_file is not None:
-                st.success(f"File uploaded successfully: {uploaded_file.name} (Size: {uploaded_file.size / 1024:.1f} KB)")
+    case["applicant_name"] = applicant_name
+    case["country_of_origin"] = country
+    case["protected_ground"] = protected_ground
 
-                if st.button("Extract & Translate Document 🚀", type="primary"):
-                    with st.spinner("Multi-Agent OCR extracting text and translating document..."):
-                        try:
-                            file_bytes = uploaded_file.read()
-                            
-                            if uploaded_file.type == "text/plain":
-                                file_content = file_bytes.decode("utf-8")
-                            else:
-                                file_content = f"[Uploaded Document: {uploaded_file.name}. Type: {uploaded_file.type}]"
+    st.divider()
 
-                            response = client.chat.completions.create(
-                                model="gpt-4o-mini",
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": (
-                                            "You are an expert legal OCR and multi-lingual translation specialist. "
-                                            "Extract any text provided or simulate accurate OCR text from the uploaded document description, "
-                                            f"then translate and format the entire content cleanly into professional {target_language}. "
-                                            "Provide: 1) Extracted / Decoded Text Summary, 2) Full Professional Translation, and 3) Legal Significance."
-                                        )
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"File Name: {uploaded_file.name}\nTarget Language: {target_language}\nContent/Details: {file_content}"
-                                    }
-                                ],
-                                temperature=0.0
-                            )
-                            ocr_output = response.choices[0].message.content
+    # --------------------------------------------------------
+    # ADD SOURCE
+    # --------------------------------------------------------
 
-                            st.success("OCR & Translation Completed Successfully!")
-                            st.markdown("---")
-                            st.markdown("### 📄 Translated Document & OCR Output")
-                            st.markdown(ocr_output)
+    st.markdown(
+        "### 2. Add Case Source"
+    )
 
-                            doc_ocr = Document()
-                            doc_ocr.add_heading(f"OCR & Translation: {uploaded_file.name}", level=1)
-                            doc_ocr.add_paragraph(f"Target Language: {target_language}\n")
-                            doc_ocr.add_paragraph(ocr_output)
+    source_type = st.selectbox(
+        "Source Type",
+        [
+            "client_statement",
+            "voice_note",
+            "whatsapp",
+            "document",
+            "email",
+            "other",
+        ],
+    )
 
-                            ocr_io = BytesIO()
-                            doc_ocr.save(ocr_io)
-                            ocr_io.seek(0)
+    source_name = st.text_input(
+        "Source Name",
+        placeholder="WhatsApp Voice Note #3",
+    )
 
-                            st.download_button(
-                                label="📥 Download Translation (.docx)",
-                                data=ocr_io,
-                                file_name=f"Translation_{uploaded_file.name.split('.')[0]}.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                            )
+    source_text = st.text_area(
+        "Source Text / Transcript",
+        height=200,
+        placeholder=(
+            "Paste a client statement, "
+            "voice-note transcript, email, "
+            "document text, etc."
+        ),
+    )
 
-                            st.markdown("---")
-                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
-                            st.checkbox("Attorney Verification: Confirm OCR accuracy and translation quality before filing.")
+    if st.button(
+        "➕ Add Source & Extract Facts",
+        type="primary",
+    ):
 
-                        except Exception as e:
-                            st.error(f"OCR Processing Error: {e}. Please check your API key or file format.")
+        if not source_text.strip():
 
-        elif workflow_tab == "⚖️ Nexus & Timeline Auditor":
-            st.subheader("⚖️ Nexus Auditor & Timeline Cross-Checker")
-            st.write("Analyze client narratives against statutory asylum grounds, identify evidentiary gaps, and check deadlines.")
-
-            client_narrative = st.text_area(
-                "Paste Client Intake Narrative / Statement:", 
-                height=180, 
-                placeholder="Enter client details here..."
-            )
-            
-            statutory_ground = st.selectbox(
-                "Select Primary Protected Ground Focus:",
-                ["Race", "Religion", "Nationality", "Membership in a particular social group (PSG)", "Political opinion"]
-            )
-
-            if st.button("Run Nexus & Timeline Audit 🚀", type="primary"):
-                if client_narrative.strip():
-                    with st.spinner("Multi-Agent Auditor analyzing narrative and statutory deadlines..."):
-                        try:
-                            response = client.chat.completions.create(
-                                model="gpt-4o-mini",
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": (
-                                            "You are an expert immigration legal tech multi-agent auditor. "
-                                            "Analyze the client narrative against the selected protected ground. "
-                                            "Provide: 1) A Timeline & Deadline Risk Assessment, "
-                                            "2) Nexus Vulnerability Analysis, and 3) Evidentiary Gaps. "
-                                            "Keep it structured, professional, and formatted in clear Markdown."
-                                        )
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"Selected Ground: {statutory_ground}\n\nClient Narrative:\n{client_narrative}"
-                                    }
-                                ],
-                                temperature=0.0
-                            )
-                            audit_output = response.choices[0].message.content
-                            
-                            st.success("Multi-Agent Pipeline Executed Successfully!")
-                            st.markdown("---")
-                            st.markdown("### 📊 Audit Findings & Gaps Analysis")
-                            st.markdown(audit_output)
-                            
-                            st.markdown("---")
-                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
-                            st.checkbox("Attorney Verification: Confirm findings and authorize Master Exhibit generation.")
-                            
-                        except Exception as e:
-                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
-                else:
-                    st.warning("⚠️ Please paste a client narrative into the text box above before running the audit.")
-
-        elif workflow_tab == "🌍 Country Conditions & Objective Evidence Screener":
-            st.subheader("🌍 Country Conditions & Objective Evidence Screener")
-            st.write("Synthesize home-country threat patterns, state-action failures, and corroborating evidence requirements.")
-
-            home_country = st.text_input("Home Country:", placeholder="e.g., Guatemala, Nicaragua, El Salvador")
-            persecution_category = st.text_input("Primary Persecution Category / Threat:", placeholder="e.g., Targeted violence against anti-mining activists")
-            key_facts = st.text_area("Key Facts from Client Narrative to Corroborate:", height=130, placeholder="e.g., Assaulted in Guatemala City after organizing demonstrations...")
-
-            if st.button("Synthesize Country Conditions & Evidence 🚀", type="primary"):
-                if home_country.strip() and persecution_category.strip() and key_facts.strip():
-                    with st.spinner("Synthesizing geopolitical threat patterns and evidence requirements..."):
-                        try:
-                            response = client.chat.completions.create(
-                                model="gpt-4o-mini",
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": (
-                                            "You are an expert country conditions and asylum evidence specialist. "
-                                            "Synthesize home-country threat patterns, state-action failures, and corroborating "
-                                            "evidence requirements based on the provided inputs. Outline: "
-                                            "1) Home-Country Threat Patterns (geopolitical context), "
-                                            "2) State-Action/Protection Analysis, and "
-                                            "3) Recommended Master Exhibit Evidence (e.g., State Dept Reports, NGO documentation). "
-                                            "Keep it structured and professional in Markdown."
-                                        )
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"Home Country: {home_country}\nPersecution Category: {persecution_category}\nKey Facts: {key_facts}"
-                                    }
-                                ],
-                                temperature=0.0
-                            )
-                            screener_output = response.choices[0].message.content
-                            
-                            st.success("Country Conditions Synthesis Complete!")
-                            st.markdown("---")
-                            st.markdown("### 📂 Objective Evidence & Threat Synthesis")
-                            st.markdown(screener_output)
-                            
-                            st.markdown("---")
-                            st.markdown("### 🔒 Master Exhibit Indexing Sign-Off")
-                            st.checkbox("Attorney Verification: Approve corroborating evidence package for Master Exhibit table.")
-                            
-                        except Exception as e:
-                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
-                else:
-                    st.warning("⚠️ Please fill out all fields to run the country conditions analysis.")
-
-        elif workflow_tab == "🔍 Deficiency & Amendment Auditor":
-            st.subheader("🔍 Application Review & Deficiency Auditor")
-            st.write("Review previously submitted applications, identify legal or factual gaps, and strengthen threat narratives to prevent dismissal.")
-
-            prior_filing = st.text_area("Paste Original Application / Statement Excerpt:", height=140, placeholder="Paste prior declaration or filing text here...")
-            government_notice = st.text_area("Paste Government Notice / RFE / Rejection Notes (Optional):", height=100, placeholder="Paste RFE or rejection reasoning here if available...")
-
-            if st.button("Run Deficiency & Amendment Analysis 🚀", type="primary"):
-                if prior_filing.strip():
-                    with st.spinner("Multi-Agent Auditor analyzing prior filing and identifying legal/factual gaps..."):
-                        try:
-                            response = client.chat.completions.create(
-                                model="gpt-4o-mini",
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": (
-                                            "You are an expert immigration legal tech deficiency and amendment auditor. "
-                                            "Review the prior filing and government rejection/RFE notes to identify legal gaps, "
-                                            "factual inconsistencies, or weak threat narratives. Provide: "
-                                            "1) Identified Legal & Factual Gaps, "
-                                            "2) RFE Risk Analysis (why it was flagged or vulnerable), and "
-                                            "3) Recommended Amendments & Stronger Threat Corroboration. "
-                                            "Keep it structured and professional in Markdown."
-                                        )
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"Prior Filing Excerpt:\n{prior_filing}\n\nGovernment Notice / RFE Notes:\n{government_notice}"
-                                    }
-                                ],
-                                temperature=0.0
-                            )
-                            deficiency_output = response.choices[0].message.content
-                            
-                            st.success("Deficiency & Amendment Analysis Complete!")
-                            st.markdown("---")
-                            st.markdown("### 📊 Deficiency Audit & Amendment Recommendations")
-                            st.markdown(deficiency_output)
-                            
-                            st.markdown("---")
-                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
-                            st.checkbox("Attorney Verification: Review recommended amendments before filing response.")
-                            
-                        except Exception as e:
-                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
-                else:
-                    st.warning("⚠️ Please paste the original application excerpt to run the deficiency analysis.")
-
-        elif workflow_tab == "📂 Exhibit Index & Document Organizer":
-            st.subheader("📂 Exhibit Index & Document Organizer")
-            st.write("Organize, index, and generate structured USCIS-compliant exhibit lists for your legal cases seamlessly.")
-
-            case_documents = st.text_area(
-                "List your compiled case documents and descriptions:", 
-                height=160, 
-                placeholder="e.g., 1. Birth certificate of applicant (Spanish with certified translation)\n2. Hospital medical record showing assault injuries dated Oct 12, 2025\n3. Police report filed in Managua rejected by officer\n4. Human Rights Watch report on Nicaragua press freedom..."
+            st.warning(
+                "Please provide source content."
             )
 
-            if st.button("Generate Master Exhibit Table 🚀", type="primary"):
-                if case_documents.strip():
-                    with st.spinner("Structuring documents into a USCIS-compliant Master Exhibit index..."):
-                        try:
-                            response = client.chat.completions.create(
-                                model="gpt-4o-mini",
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": (
-                                            "You are an expert legal paralegal and immigration exhibit specialist. "
-                                            "Take the raw list of compiled case documents and organize them into a clean, "
-                                            "professional, USCIS-compliant Master Exhibit Index table formatted in Markdown. "
-                                            "Include columns for: Exhibit Letter/Number, Document Description, Date, and Evidentiary Purpose."
-                                        )
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"Compiled Documents:\n{case_documents}"
-                                    }
-                                ],
-                                temperature=0.0
-                            )
-                            exhibit_output = response.choices[0].message.content
-                            
-                            st.success("Master Exhibit Index Generated Successfully!")
-                            st.markdown("---")
-                            st.markdown("### 📋 USCIS-Compliant Master Exhibit Table")
-                            st.markdown(exhibit_output)
-                            
-                            doc = Document()
-                            doc.add_heading("Master Exhibit Index", level=1)
-                            doc.add_paragraph("Compiled Case Evidence & USCIS Index Summary\n")
-                            doc.add_paragraph(exhibit_output)
-                            
-                            doc_io = BytesIO()
-                            doc.save(doc_io)
-                            doc_io.seek(0)
-                            
-                            st.download_button(
-                                label="📥 Download Master Exhibit Table (.docx)",
-                                data=doc_io,
-                                file_name="Master_Exhibit_Index.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                            )
-                            
-                            st.markdown("---")
-                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
-                            st.checkbox("Attorney Verification: Approve Master Exhibit index for final court/USCIS binder compilation.")
-                            
-                        except Exception as e:
-                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
-                else:
-                    st.warning("⚠️ Please list your compiled documents before generating the exhibit table.")
+        else:
 
-        elif workflow_tab == "✉️ Automated Intake Email Generator":
-            st.subheader("✉️ Automated Intake Email & Follow-Up Generator")
-            st.write("Generate professional, multi-lingual follow-up emails and information requests for clients.")
-
-            client_name = st.text_input("Client Name:", placeholder="e.g., Elena Morales")
-            
-            preferred_language = st.selectbox(
-                "Preferred Language:", 
-                ["English", "Spanish", "French", "Haitian Creole", "Portuguese", "Mandarin"]
+            source = add_source(
+                source_type=source_type,
+                name=(
+                    source_name
+                    or "Unnamed Source"
+                ),
+                text=source_text,
             )
-            
-            email_purpose = st.selectbox(
-                "Email Purpose / Correspondence Type:",
+
+            with st.spinner(
+                "Extracting source-grounded facts..."
+            ):
+
+                try:
+
+                    facts = extract_facts_from_source(
+                        source
+                    )
+
+                    rebuild_timeline()
+
+                    st.success(
+                        f"Source added. "
+                        f"{len(facts)} fact(s) extracted."
+                    )
+
+                except Exception as exc:
+
+                    st.error(
+                        f"Fact extraction failed: {exc}"
+                    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # CASE FACTS
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 3. Case Facts"
+    )
+
+    if not case["facts"]:
+
+        st.info(
+            "No facts have been added yet."
+        )
+
+    else:
+
+        for fact in case["facts"]:
+
+            source_display = ", ".join(
+                fact["source_ids"]
+            )
+
+            with st.expander(
+                fact["statement"]
+            ):
+
+                st.write(
+                    f"**Fact ID:** `{fact['fact_id']}`"
+                )
+
+                st.write(
+                    f"**Date:** "
+                    f"{fact.get('date') or 'Not established'}"
+                )
+
+                st.write(
+                    f"**Confidence:** "
+                    f"{fact.get('confidence', 'medium')}"
+                )
+
+                st.write(
+                    f"**Source:** "
+                    f"`{source_display}`"
+                )
+
+                verified = st.checkbox(
+                    "Attorney has verified this fact",
+                    value=fact.get(
+                        "attorney_verified",
+                        False,
+                    ),
+                    key=(
+                        f"verify_{fact['fact_id']}"
+                    ),
+                )
+
+                fact["attorney_verified"] = verified
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # TIMELINE
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 4. Case Timeline"
+    )
+
+    if case["timeline"]:
+
+        for event in case["timeline"]:
+
+            st.markdown(
+                f"""
+**{event['date']}**
+
+{event['description']}
+
+Source IDs: `{", ".join(event['source_ids'])}`
+"""
+            )
+
+    else:
+
+        st.info(
+            "No dated events have been identified."
+        )
+
+    if st.button(
+        "🔄 Rebuild Timeline"
+    ):
+
+        rebuild_timeline()
+
+        st.success(
+            "Timeline rebuilt from structured facts."
+        )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # CASE ANALYSIS
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 5. Run Case Intelligence"
+    )
+
+    if not case["facts"]:
+
+        st.warning(
+            "Add case sources and facts first."
+        )
+
+    elif not protected_ground:
+
+        st.warning(
+            "Select a primary protected ground."
+        )
+
+    else:
+
+        if st.button(
+            "🧠 Analyze Case",
+            type="primary",
+        ):
+
+            with st.spinner(
+                "Running case intelligence analysis..."
+            ):
+
+                try:
+
+                    result = run_case_intelligence(
+                        protected_ground
+                    )
+
+                    st.session_state.last_output = (
+                        result
+                    )
+
+                    st.success(
+                        "Case intelligence analysis completed."
+                    )
+
+                except Exception as exc:
+
+                    st.error(
+                        f"Analysis failed: {exc}"
+                    )
+
+    if st.session_state.last_output:
+
+        st.markdown(
+            "### 📊 Case Intelligence Report"
+        )
+
+        st.markdown(
+            st.session_state.last_output
+        )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # ADVERSARIAL REVIEW
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 6. 🔴 Attack This Case"
+    )
+
+    st.caption(
+        "The purpose of this review is to surface potential "
+        "weaknesses for attorney investigation—not to make "
+        "credibility findings."
+    )
+
+    if st.button(
+        "🔴 Run Adversarial Review",
+        type="secondary",
+    ):
+
+        if not case["facts"]:
+
+            st.warning(
+                "There are no facts to review yet."
+            )
+
+        else:
+
+            with st.spinner(
+                "Running contradiction and vulnerability analysis..."
+            ):
+
+                try:
+
+                    issues = run_contradiction_audit()
+
+                    if issues:
+
+                        st.warning(
+                            f"{len(issues)} potential "
+                            "issue(s) identified."
+                        )
+
+                    else:
+
+                        st.success(
+                            "No potential contradictions "
+                            "were identified by the review."
+                        )
+
+                except Exception as exc:
+
+                    st.error(
+                        f"Adversarial review failed: {exc}"
+                    )
+
+    if case["vulnerabilities"]:
+
+        st.markdown(
+            "### 🚨 Potential Vulnerabilities"
+        )
+
+        for vulnerability in case[
+            "vulnerabilities"
+        ]:
+
+            severity = vulnerability[
+                "severity"
+            ].upper()
+
+            message = (
+                f"**{severity} — "
+                f"{vulnerability['issue']}**\n\n"
+                f"{vulnerability['explanation']}\n\n"
+                f"**Recommended action:** "
+                f"{vulnerability.get('recommended_action') or 'Attorney review required.'}"
+            )
+
+            if severity in [
+                "CRITICAL",
+                "HIGH",
+            ]:
+
+                st.error(message)
+
+            elif severity == "MEDIUM":
+
+                st.warning(message)
+
+            else:
+
+                st.info(message)
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # ATTORNEY APPROVAL
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 7. 🔒 Attorney Review"
+    )
+
+    approval_reason = st.text_area(
+        "Attorney review notes",
+        placeholder=(
+            "Record what was reviewed, "
+            "what requires follow-up, "
+            "or why the analysis was approved."
+        ),
+    )
+
+    if st.button(
+        "✅ Record Attorney Review",
+        type="primary",
+    ):
+
+        approval = {
+            "approval_id": str(
+                uuid.uuid4()
+            ),
+            "timestamp": datetime.now(
+                timezone.utc
+            ).isoformat(),
+            "actor": "HUMAN_ATTORNEY",
+            "notes": approval_reason,
+        }
+
+        case["approvals"].append(
+            approval
+        )
+
+        audit_event(
+            "ATTORNEY_REVIEW_RECORDED",
+            actor="HUMAN_ATTORNEY",
+            details=approval,
+        )
+
+        st.success(
+            "Attorney review recorded in the case audit trail."
+        )
+
+
+# ============================================================
+# LIVE WORKFLOW
+# ============================================================
+
+elif page == "⚡ Live Workflow Tool":
+
+    st.title(
+        "⚡ Live Workflow Workspace"
+    )
+
+    st.caption(
+        "Execute specialized immigration workflows while "
+        "maintaining a shared case context."
+    )
+
+    if client is None:
+
+        st.error(
+            "OPENAI_API_KEY is not configured."
+        )
+
+        st.info(
+            "Add OPENAI_API_KEY to your Streamlit Secrets."
+        )
+
+        st.stop()
+
+    workflow_tab = st.selectbox(
+        "Select Workflow Module",
+        [
+            "🌐 Multi-Lingual Translator & Document OCR",
+            "⚖️ Nexus & Timeline Auditor",
+            "🌍 Country Conditions & Objective Evidence",
+            "🔍 Deficiency & Amendment Auditor",
+            "📂 Exhibit Index & Document Organizer",
+            "✉️ Automated Intake Email Generator",
+            "📥 Inbound Firm Mailroom",
+        ],
+    )
+
+    st.divider()
+
+    # ========================================================
+    # TRANSLATOR / OCR
+    # ========================================================
+
+    if workflow_tab.startswith(
+        "🌐"
+    ):
+
+        st.subheader(
+            "🌐 Multi-Lingual Translator & Document OCR"
+        )
+
+        st.write(
+            "Extract text from image documents and "
+            "translate source material while preserving "
+            "the distinction between original text and analysis."
+        )
+
+        uploaded_file = st.file_uploader(
+            "Upload image or text document",
+            type=[
+                "png",
+                "jpg",
+                "jpeg",
+                "txt",
+            ],
+        )
+
+        target_language = st.selectbox(
+            "Target Language",
+            TARGET_LANGUAGES,
+        )
+
+        if uploaded_file:
+
+            st.success(
+                f"Uploaded: {uploaded_file.name}"
+            )
+
+            if st.button(
+                "🚀 Extract & Translate",
+                type="primary",
+            ):
+
+                try:
+
+                    file_bytes = (
+                        uploaded_file.read()
+                    )
+
+                    if uploaded_file.type == (
+                        "text/plain"
+                    ):
+
+                        source_text = (
+                            file_bytes
+                            .decode(
+                                "utf-8",
+                                errors="replace",
+                            )
+                        )
+
+                        translation_prompt = f"""
+Translate the following source text into
+{target_language}.
+
+Return:
+
+1. SOURCE TEXT
+2. PROFESSIONAL TRANSLATION
+3. TRANSLATION NOTES
+
+Do not invent missing text.
+Do not provide legal conclusions.
+
+SOURCE:
+
+{source_text}
+"""
+
+                        result = ask_markdown(
+                            "You are a source-faithful "
+                            "legal translation assistant.",
+                            translation_prompt,
+                        )
+
+                    else:
+
+                        result = process_image(
+                            file_bytes,
+                            uploaded_file.type,
+                            target_language,
+                        )
+
+                        source_text = (
+                            "[Image OCR source]"
+                        )
+
+                    source = add_source(
+                        source_type="document",
+                        name=uploaded_file.name,
+                        text=source_text,
+                        metadata={
+                            "target_language":
+                                target_language,
+                            "mime_type":
+                                uploaded_file.type,
+                        },
+                    )
+
+                    st.session_state.last_output = (
+                        result
+                    )
+
+                    st.success(
+                        "OCR / translation completed."
+                    )
+
+                    st.markdown(
+                        "### 📄 Output"
+                    )
+
+                    st.markdown(result)
+
+                    doc = create_docx(
+                        f"OCR & Translation — "
+                        f"{uploaded_file.name}",
+                        result,
+                    )
+
+                    st.download_button(
+                        "📥 Download DOCX",
+                        data=doc,
+                        file_name=(
+                            f"Translation_"
+                            f"{uploaded_file.name}"
+                            f".docx"
+                        ),
+                        mime=(
+                            "application/vnd.openxmlformats-"
+                            "officedocument.wordprocessingml.document"
+                        ),
+                    )
+
+                    st.divider()
+
+                    attorney_verified = st.checkbox(
+                        "Attorney/staff verified source extraction and translation",
+                        key="translation_approval",
+                    )
+
+                    if attorney_verified:
+
+                        audit_event(
+                            "TRANSLATION_APPROVED",
+                            actor="HUMAN_ATTORNEY",
+                            details={
+                                "source_id":
+                                    source[
+                                        "source_id"
+                                    ]
+                            },
+                        )
+
+                except Exception as exc:
+
+                    st.error(
+                        f"Processing error: {exc}"
+                    )
+
+    # ========================================================
+    # NEXUS
+    # ========================================================
+
+    elif workflow_tab.startswith(
+        "⚖️"
+    ):
+
+        st.subheader(
+            "⚖️ Nexus & Timeline Auditor"
+        )
+
+        narrative = st.text_area(
+            "Client Narrative",
+            height=220,
+        )
+
+        ground = st.selectbox(
+            "Protected Ground",
+            PROTECTED_GROUNDS,
+        )
+
+        if st.button(
+            "🚀 Run Nexus Audit",
+            type="primary",
+        ):
+
+            if not narrative.strip():
+
+                st.warning(
+                    "Please provide a client narrative."
+                )
+
+            else:
+
+                source = add_source(
+                    source_type="client_statement",
+                    name="Nexus Audit Narrative",
+                    text=narrative,
+                )
+
+                with st.spinner(
+                    "Analyzing narrative..."
+                ):
+
+                    try:
+
+                        facts = extract_facts_from_source(
+                            source
+                        )
+
+                        rebuild_timeline()
+
+                        prompt = f"""
+Protected Ground:
+{ground}
+
+Facts:
+{json.dumps(
+    facts,
+    indent=2,
+)}
+
+Timeline:
+{json.dumps(
+    get_case()["timeline"],
+    indent=2,
+)}
+"""
+
+                        result = ask_markdown(
+                            """
+You are an immigration case analyst
+assisting a supervising attorney.
+
+Analyze potential nexus strengths,
+potential vulnerabilities, evidence gaps,
+and timeline concerns.
+
+Do not determine eligibility.
+Do not make credibility findings.
+Do not invent facts.
+
+Reference fact IDs wherever possible.
+""",
+                            prompt,
+                        )
+
+                        st.markdown(
+                            "### 📊 Nexus Analysis"
+                        )
+
+                        st.markdown(
+                            result
+                        )
+
+                        st.session_state.last_output = (
+                            result
+                        )
+
+                        audit_event(
+                            "NEXUS_ANALYSIS",
+                            details={
+                                "protected_ground":
+                                    ground
+                            },
+                        )
+
+                    except Exception as exc:
+
+                        st.error(
+                            f"Nexus analysis failed: {exc}"
+                        )
+
+    # ========================================================
+    # COUNTRY CONDITIONS
+    # ========================================================
+
+    elif workflow_tab.startswith(
+        "🌍"
+    ):
+
+        st.subheader(
+            "🌍 Country Conditions & Objective Evidence"
+        )
+
+        home_country = st.text_input(
+            "Home Country"
+        )
+
+        persecution_category = st.text_input(
+            "Primary Persecution / Threat Category"
+        )
+
+        key_facts = st.text_area(
+            "Key Facts to Corroborate",
+            height=160,
+        )
+
+        if st.button(
+            "🚀 Analyze Country Conditions",
+            type="primary",
+        ):
+
+            if not all(
                 [
-                    "Document Request & Case Follow-up",
-                    "Request for Additional Evidence (RFE) Follow-up",
-                    "Upcoming Interview / Meeting Reminder",
-                    "Case Status Update & Next Steps",
-                    "Custom Purpose..."
+                    home_country.strip(),
+                    persecution_category.strip(),
+                    key_facts.strip(),
                 ]
+            ):
+
+                st.warning(
+                    "Please complete all fields."
+                )
+
+            else:
+
+                prompt = f"""
+Country:
+{home_country}
+
+Threat / Persecution Category:
+{persecution_category}
+
+Client Facts:
+{key_facts}
+"""
+
+                with st.spinner(
+                    "Analyzing country-condition issues..."
+                ):
+
+                    try:
+
+                        result = ask_markdown(
+                            """
+You are a country-conditions research
+assistant for an immigration attorney.
+
+Identify:
+
+1. Relevant country-condition themes
+2. State protection issues
+3. Potential corroborating evidence
+4. Evidence gaps
+5. Questions requiring primary-source research
+
+Do not fabricate sources.
+Do not present unsupported current facts
+as verified.
+
+The output is a research plan, not a
+final legal conclusion.
+""",
+                            prompt,
+                        )
+
+                        st.markdown(
+                            "### 🌍 Country Conditions Analysis"
+                        )
+
+                        st.markdown(
+                            result
+                        )
+
+                        audit_event(
+                            "COUNTRY_CONDITIONS_ANALYSIS",
+                            details={
+                                "country":
+                                    home_country
+                            },
+                        )
+
+                    except Exception as exc:
+
+                        st.error(
+                            f"Analysis failed: {exc}"
+                        )
+
+    # ========================================================
+    # DEFICIENCY
+    # ========================================================
+
+    elif workflow_tab.startswith(
+        "🔍"
+    ):
+
+        st.subheader(
+            "🔍 Deficiency & Amendment Auditor"
+        )
+
+        prior_filing = st.text_area(
+            "Original Filing / Declaration",
+            height=200,
+        )
+
+        government_notice = st.text_area(
+            "Government Notice / RFE / Rejection",
+            height=150,
+        )
+
+        if st.button(
+            "🚀 Run Deficiency Analysis",
+            type="primary",
+        ):
+
+            if not prior_filing.strip():
+
+                st.warning(
+                    "Please provide the prior filing."
+                )
+
+            else:
+
+                with st.spinner(
+                    "Reviewing filing for potential deficiencies..."
+                ):
+
+                    try:
+
+                        result = ask_markdown(
+                            """
+You are an immigration filing-review
+assistant.
+
+Identify:
+
+1. Factual gaps
+2. Internal inconsistencies
+3. Missing corroboration
+4. Potential legal issues requiring attorney research
+5. Questions raised by the government notice
+6. Recommended follow-up investigation
+
+Do not invent facts.
+Do not guarantee an outcome.
+Do not make a final legal determination.
+""",
+                            f"""
+PRIOR FILING:
+
+{prior_filing}
+
+GOVERNMENT NOTICE:
+
+{government_notice}
+""",
+                        )
+
+                        st.markdown(
+                            "### 🔍 Deficiency Report"
+                        )
+
+                        st.markdown(
+                            result
+                        )
+
+                        audit_event(
+                            "DEFICIENCY_REVIEW",
+                        )
+
+                    except Exception as exc:
+
+                        st.error(
+                            f"Deficiency analysis failed: {exc}"
+                        )
+
+    # ========================================================
+    # EXHIBITS
+    # ========================================================
+
+    elif workflow_tab.startswith(
+        "📂"
+    ):
+
+        st.subheader(
+            "📂 Exhibit Index & Document Organizer"
+        )
+
+        documents = st.text_area(
+            "Case Documents",
+            height=220,
+            placeholder=(
+                "1. Birth certificate\n"
+                "2. Police report\n"
+                "3. Medical records\n"
+                "4. Country-condition report"
+            ),
+        )
+
+        if st.button(
+            "🚀 Generate Exhibit Index",
+            type="primary",
+        ):
+
+            if not documents.strip():
+
+                st.warning(
+                    "Please list the case documents."
+                )
+
+            else:
+
+                with st.spinner(
+                    "Organizing exhibits..."
+                ):
+
+                    try:
+
+                        result = ask_markdown(
+                            """
+You are an immigration legal
+document-organizing assistant.
+
+Create a clean exhibit index.
+
+Do not invent dates.
+Do not invent document contents.
+If information is missing, label it
+"Not provided."
+
+Suggested columns:
+
+Exhibit
+Document Description
+Date
+Evidentiary Purpose
+Verification Status
+""",
+                            documents,
+                        )
+
+                        st.markdown(
+                            "### 📋 Exhibit Index"
+                        )
+
+                        st.markdown(
+                            result
+                        )
+
+                        doc = create_docx(
+                            "Master Exhibit Index",
+                            result,
+                        )
+
+                        st.download_button(
+                            "📥 Download Exhibit Index",
+                            data=doc,
+                            file_name=(
+                                "Master_Exhibit_Index.docx"
+                            ),
+                            mime=(
+                                "application/vnd.openxmlformats-"
+                                "officedocument.wordprocessingml.document"
+                            ),
+                        )
+
+                        audit_event(
+                            "EXHIBIT_INDEX_GENERATED"
+                        )
+
+                    except Exception as exc:
+
+                        st.error(
+                            f"Exhibit generation failed: {exc}"
+                        )
+
+    # ========================================================
+    # EMAIL
+    # ========================================================
+
+    elif workflow_tab.startswith(
+        "✉️"
+    ):
+
+        st.subheader(
+            "✉️ Automated Intake Email Generator"
+        )
+
+        client_name = st.text_input(
+            "Client Name"
+        )
+
+        language = st.selectbox(
+            "Preferred Language",
+            TARGET_LANGUAGES,
+        )
+
+        purpose = st.selectbox(
+            "Email Purpose",
+            [
+                "Document Request",
+                "Additional Evidence Request",
+                "Interview Reminder",
+                "Case Status Update",
+                "Custom",
+            ],
+        )
+
+        details = st.text_area(
+            "Specific Details",
+            height=150,
+        )
+
+        if purpose == "Custom":
+
+            purpose = st.text_input(
+                "Custom Purpose"
             )
 
-            if email_purpose == "Custom Purpose...":
-                email_purpose = st.text_input("Enter Custom Email Purpose:", placeholder="e.g., Missing identity documents request")
+        if st.button(
+            "🚀 Generate Email",
+            type="primary",
+        ):
 
-            specific_details = st.text_area("Specific Details to Include:", height=130, placeholder="e.g., Need certified copies of police reports from Tegucigalpa and remind her of our upcoming meeting next Tuesday...")
+            if not all(
+                [
+                    client_name.strip(),
+                    purpose.strip(),
+                    details.strip(),
+                ]
+            ):
 
-            if st.button("Generate Professional Intake Email 🚀", type="primary"):
-                if client_name.strip() and email_purpose.strip() and specific_details.strip():
-                    with st.spinner("Drafting professional, trauma-informed multi-lingual client correspondence..."):
-                        try:
-                            response = client.chat.completions.create(
-                                model="gpt-4o-mini",
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": (
-                                            "You are an expert immigration legal assistant and communications specialist. "
-                                            "Draft a professional, empathetic, and clear client follow-up email based on the inputs. "
-                                            "The email must be written entirely in the client's preferred language. "
-                                            "Include appropriate subject lines, respectful greetings, clear action items, and office contact sign-offs. "
-                                            "IMPORTANT: If the email pertains to starting an asylum case or filing documentation, "
-                                            "include a clear hyperlink referencing the official USCIS Form I-589 page: "
-                                            "https://www.uscis.gov/i-589 (or instruct them that they can access the official application and instructions there)."
-                                        )
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"Client Name: {client_name}\nPreferred Language: {preferred_language}\nEmail Purpose: {email_purpose}\nSpecific Details: {specific_details}"
-                                    }
-                                ],
-                                temperature=0.0
-                            )
-                            email_output = response.choices[0].message.content
-                            
-                            st.success("Client Email Generated Successfully!")
-                            st.markdown("---")
-                            st.markdown("### 📨 Drafted Correspondence")
-                            st.markdown(email_output)
-                            
-                            doc_email = Document()
-                            doc_email.add_heading(f"Client Correspondence: {client_name}", level=1)
-                            doc_email.add_paragraph(f"Language: {preferred_language} | Purpose: {email_purpose}\n")
-                            doc_email.add_paragraph(email_output)
-                            
-                            email_io = BytesIO()
-                            doc_email.save(email_io)
-                            email_io.seek(0)
-                            
-                            st.download_button(
-                                label="📥 Download Intake Email (.docx)",
-                                data=email_io,
-                                file_name=f"Intake_Email_{client_name.replace(' ', '_')}.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                            )
-                            
-                            st.markdown("---")
-                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
-                            st.checkbox("Attorney/Staff Verification: Review and approve email draft before sending to client.")
-                            
-                        except Exception as e:
-                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
-                else:
-                    st.warning("⚠️ Please fill out all required fields to generate the email.")
+                st.warning(
+                    "Please complete all fields."
+                )
 
-        elif workflow_tab == "📥 Inbound Firm Mailroom":
-            st.subheader("📥 Inbound Firm Mailroom & Auto-Processor")
-            st.write("Connect to your organization's inbox to parse unread client inquiries, categorize needs, and auto-generate draft responses.")
+            else:
 
-            st.info("💡 To connect a live inbox, store your IMAP settings in Streamlit Secrets (`IMAP_SERVER`, `FIRM_EMAIL`, `IMAP_PASSWORD`). For now, you can test the simulation engine below.")
+                with st.spinner(
+                    "Drafting client correspondence..."
+                ):
 
-            simulated_sender = st.text_input("Simulate Inbound Sender Email:", value="carlos.mendoza@example.com")
-            simulated_subject = st.text_input("Simulate Email Subject:", value="Question about my asylum documents and hearing date")
-            simulated_body = st.text_area(
-                "Simulate Inbound Client Message Body:",
-                height=130,
-                value="Hello, I am writing because I cannot find my police report from San Salvador. Do I need to get a new one before next month? Also, when is our next appointment?"
-            )
+                    try:
 
-            if st.button("Process Inbound Message & Draft Response 🚀", type="primary"):
-                if simulated_body.strip():
-                    with st.spinner("AI parsing client intent and drafting compliant follow-up response..."):
-                        try:
-                            response = client.chat.completions.create(
-                                model="gpt-4o-mini",
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": (
-                                            "You are an automated legal intake assistant for an immigration firm. "
-                                            "Analyze the incoming client email, identify missing documents needed to start their case, "
-                                            "and draft a polite, professional follow-up response addressing their questions and requesting necessary items. "
-                                            "Include references to the official USCIS Form I-589 application portal (https://www.uscis.gov/i-589) if relevant."
-                                        )
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"From: {simulated_sender}\nSubject: {simulated_subject}\nMessage Body:\n{simulated_body}"
-                                    }
-                                ],
-                                temperature=0.0
-                            )
-                            inbound_draft = response.choices[0].message.content
+                        result = ask_markdown(
+                            f"""
+You are an immigration law-office
+communications assistant.
 
-                            st.success("Inbound Message Processed & Draft Generated Successfully!")
-                            st.markdown("---")
-                            st.markdown(f"### 📨 AI Drafted Reply to: {simulated_sender}")
-                            st.markdown(inbound_draft)
+Write a professional, clear,
+empathetic client email in
+{language}.
 
-                            doc_inbound = Document()
-                            doc_inbound.add_heading(f"Inbound Reply: {simulated_sender}", level=1)
-                            doc_inbound.add_paragraph(f"Subject: {simulated_subject}\n")
-                            doc_inbound.add_paragraph(inbound_draft)
+Do not provide legal advice beyond
+the supplied information.
 
-                            inbound_io = BytesIO()
-                            doc_inbound.save(inbound_io)
-                            inbound_io.seek(0)
+Clearly identify requested actions.
+Return only the email draft.
+""",
+                            f"""
+Client:
+{client_name}
 
-                            st.download_button(
-                                label="📥 Download Draft Response (.docx)",
-                                data=inbound_io,
-                                file_name=f"Draft_Response_{simulated_sender.split('@')[0]}.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+Purpose:
+{purpose}
+
+Details:
+{details}
+""",
+                        )
+
+                        st.markdown(
+                            "### 📨 Draft Email"
+                        )
+
+                        st.markdown(
+                            result
+                        )
+
+                        doc = create_docx(
+                            f"Client Correspondence — {client_name}",
+                            result,
+                        )
+
+                        st.download_button(
+                            "📥 Download Email",
+                            data=doc,
+                            file_name=(
+                                "Client_Correspondence.docx"
+                            ),
+                            mime=(
+                                "application/vnd.openxmlformats-"
+                                "officedocument.wordprocessingml.document"
+                            ),
+                        )
+
+                        approved = st.checkbox(
+                            "Staff/attorney reviewed this draft before sending",
+                            key="email_approval",
+                        )
+
+                        if approved:
+
+                            audit_event(
+                                "CLIENT_EMAIL_APPROVED",
+                                actor="HUMAN_ATTORNEY",
                             )
 
-                            st.markdown("---")
-                            st.markdown("### 🔒 Human-in-the-Loop (HITL) Sign-Off")
-                            st.checkbox("Attorney/Staff Verification: Review and approve automated draft before sending.")
+                    except Exception as exc:
 
-                        except Exception as e:
-                            st.error(f"OpenAI API Error: {e}. Please check your API key secrets in Streamlit.")
-                else:
-                    st.warning("⚠️ Please provide an inbound message body to process.")
+                        st.error(
+                            f"Email generation failed: {exc}"
+                        )
+
+    # ========================================================
+    # MAILROOM
+    # ========================================================
+
+    elif workflow_tab.startswith(
+        "📥"
+    ):
+
+        st.subheader(
+            "📥 Inbound Firm Mailroom"
+        )
+
+        st.info(
+            "This simulation lets you test inbound "
+            "client-message classification before "
+            "connecting a production inbox."
+        )
+
+        sender = st.text_input(
+            "Sender",
+            value="client@example.com",
+        )
+
+        subject = st.text_input(
+            "Subject",
+            value="Question about my case",
+        )
+
+        message = st.text_area(
+            "Message",
+            height=180,
+        )
+
+        if st.button(
+            "🚀 Process Message",
+            type="primary",
+        ):
+
+            if not message.strip():
+
+                st.warning(
+                    "Please provide a message."
+                )
+
+            else:
+
+                with st.spinner(
+                    "Classifying inbound message..."
+                ):
+
+                    try:
+
+                        result = ask_markdown(
+                            """
+You are an immigration law-office
+mailroom assistant.
+
+Analyze the incoming message.
+
+Return:
+
+1. Client intent
+2. Urgency
+3. Potential deadline concern
+4. Documents requested or missing
+5. Questions requiring staff review
+6. Draft response
+
+Do not make legal conclusions.
+Do not promise outcomes.
+""",
+                            f"""
+FROM:
+{sender}
+
+SUBJECT:
+{subject}
+
+MESSAGE:
+{message}
+""",
+                        )
+
+                        st.markdown(
+                            "### 📨 Mailroom Analysis"
+                        )
+
+                        st.markdown(
+                            result
+                        )
+
+                        audit_event(
+                            "INBOUND_MESSAGE_PROCESSED",
+                            details={
+                                "sender":
+                                    sender,
+                                "subject":
+                                    subject,
+                            },
+                        )
+
+                    except Exception as exc:
+
+                        st.error(
+                            f"Mailroom processing failed: {exc}"
+                        )
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "Primer Paso AI — AI-assisted immigration workflow. "
+    "Outputs require appropriate professional review."
+)
+  
+                        
+                          
